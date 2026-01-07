@@ -1,0 +1,4 @@
+file_path,function_name,violation_description
+tests/sample_code/uart.c,uart_init,MISRA C:2012 Rule 8.4 - Missing function prototype declaration
+tests/sample_code/uart.c,uart_send,MISRA C:2012 Rule 17.7 - Return value of function should be used
+tests/sample_code/buffer.c,buffer_write,MISRA C:2012 Rule 21.3 - Use of standard library function 'memcpy' should be avoided

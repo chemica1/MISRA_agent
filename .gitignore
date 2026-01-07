@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+state.json
+refactoring_log.json
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test outputs
+tests/sample_code/*.bak
