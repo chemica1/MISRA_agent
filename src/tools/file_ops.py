@@ -44,6 +44,7 @@ def validate_path(file_path: str, project_root: str) -> Path:
 def backup_file(file_path: Path) -> Path:
     """
     Create backup of file with .bak extension.
+    Only creates backup if one doesn't already exist to preserve original content.
     
     Args:
         file_path: Path to file to backup
@@ -53,9 +54,13 @@ def backup_file(file_path: Path) -> Path:
     """
     backup_path = file_path.with_suffix(file_path.suffix + ".bak")
     
-    if file_path.exists():
+    # Only create backup if it doesn't already exist
+    # This preserves the original file content across multiple modifications
+    if file_path.exists() and not backup_path.exists():
         shutil.copy2(file_path, backup_path)
         print(f"[BACKUP] Created: {backup_path}")
+    elif backup_path.exists():
+        print(f"[BACKUP] Already exists (preserving original): {backup_path}")
     
     return backup_path
 
