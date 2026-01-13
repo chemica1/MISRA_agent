@@ -14,7 +14,7 @@ class OllamaResponse(BaseModel):
     is_safe: bool = True  # Whether fix can be safely applied in isolation
     safety_concerns: Optional[str] = None  # Description of risks if unsafe
     modified_code: Optional[str] = None
-    reason: Optional[str] = None  # Short reason for modification (<100 chars)
+    reason: Optional[str] = None  # Short reason for modification (<200 chars)
 
 
 class OllamaClient:
@@ -148,7 +148,7 @@ CRITICAL RULES:
 2. Do NOT change business logic or behavior
 3. Keep modifications minimal and conservative
 4. Ensure code remains syntactically correct
-5. Provide a brief reason (<100 chars) for your changes
+5. Provide a brief reason (<200 chars) for your changes
 
 SAFETY ANALYSIS - BEFORE proposing any fix, check if it requires:
 - Changing function signature (parameters, return type)
@@ -163,9 +163,9 @@ Respond in JSON format:
     "action": "modify_code",  // or "skip" if unsafe
     "reasoning": "Brief explanation of what you're doing",
     "is_safe": true,  // false if fix requires signature changes or global impacts
-    "safety_concerns": null,  // describe risks if is_safe=false
+    "safety_concerns": null,  // describe risks if is_safe=false (<200 chars)
     "modified_code": "Complete modified function code",
-    "reason": "Short reason for change (<100 chars)"
+    "reason": "Short reason for change (<200 chars)"
 }
 
 EXAMPLES:
