@@ -124,6 +124,16 @@ def main():
         print(f"\n[ERROR] Agent execution failed: {e}")
         import traceback
         traceback.print_exc()
+        
+        # Save logs even on error to preserve progress
+        try:
+            if 'final_state' in locals() and final_state and 'logs' in final_state:
+                print(f"\n[INFO] Saving logs before exit: {settings.log_file}")
+                save_logs(final_state["logs"], settings.log_file)
+                print(f"[INFO] Saved {len(final_state['logs'])} log entries")
+        except Exception as log_error:
+            print(f"[ERROR] Failed to save logs: {log_error}")
+        
         sys.exit(1)
 
 
