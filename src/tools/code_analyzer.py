@@ -16,7 +16,8 @@ class FunctionInfo(BaseModel):
 
 def find_function(file_content: str, function_name: str) -> Optional[FunctionInfo]:
     """
-    Find function in C source code using LLM.
+    Find function in C source code using smart chunking.
+    Uses regex pre-filter + LLM verification on small chunks for large files.
     
     Args:
         file_content: Full file content
@@ -28,6 +29,22 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
     from .llm_client import OllamaClient
     from ..config import settings
     
+    lines = file_content.split('\n')
+    
+    # Step 1: Quick regex scan to find approximate location(s)
+    pattern = rf'\b{re.escape(function_name)}\s*\('
+    candidate_lines = []
+    
+    for i, line in enumerate(lines):
+        if re.search(pattern, line):
+            candidate_lines.append(i)
+    
+    if not candidate_lines:
+        print(f"[REGEX] Function '{function_name}' not found in file")
+        return None
+    
+    print(f"[REGEX] Found {len(candidate_lines)} potential location(s) for '{function_name}'")
+    
     # Initialize LLM client
     llm = OllamaClient(
         model=settings.ollama_model,
@@ -35,37 +52,49 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
         timeout=settings.ollama_timeout
     )
     
-    # Ask LLM to find function
-    response = llm.find_function_in_code(file_content, function_name)
+    # Step 2: For each candidate, extract context and verify with LLM
+    for idx, candidate_line in enumerate(candidate_lines):
+        # Extract ±100 lines context around candidate
+        context_size = 100
+        start_line = max(0, candidate_line - context_size)
+        end_line = min(len(lines), candidate_line + context_size)
+        
+        chunk = '\n'.join(lines[start_line:end_line])
+        chunk_line_count = end_line - start_line
+        
+        print(f"[CHUNK {idx+1}/{len(candidate_lines)}] Checking lines {start_line+1}-{end_line} ({chunk_line_count} lines)")
+        
+        # Ask LLM to verify and find exact boundaries in this chunk
+        response = llm.find_function_in_code(chunk, function_name)
+        
+        if response.found:
+            # Adjust line numbers from chunk to full file (chunk is 1-indexed)
+            actual_start = start_line + response.start_line
+            actual_end = start_line + response.end_line
+            
+            # Validate adjusted line numbers
+            if actual_start < 1 or actual_end > len(lines):
+                print(f"[ERROR] Invalid adjusted line numbers: {actual_start}-{actual_end}")
+                continue
+            
+            # Extract function code from full file
+            full_code = '\n'.join(lines[actual_start - 1:actual_end])
+            
+            print(f"[LLM] Found '{function_name}' at lines {actual_start}-{actual_end}")
+            
+            return FunctionInfo(
+                name=function_name,
+                start_line=actual_start,
+                end_line=actual_end,
+                full_code=full_code,
+                signature=response.signature
+            )
+        else:
+            print(f"[LLM] Chunk {idx+1}: {response.reasoning}")
     
-    if not response.found:
-        print(f"[LLM] {response.reasoning}")
-        return None
-    
-    # Extract function code using line numbers
-    lines = file_content.split('\n')
-    
-    # Validate line numbers
-    if response.start_line < 1 or response.end_line > len(lines):
-        print(f"[ERROR] Invalid line numbers from LLM: {response.start_line}-{response.end_line}")
-        return None
-    
-    if response.start_line > response.end_line:
-        print(f"[ERROR] Start line > end line: {response.start_line} > {response.end_line}")
-        return None
-    
-    # Extract function code (convert to 0-indexed)
-    full_code = '\n'.join(lines[response.start_line - 1:response.end_line])
-    
-    print(f"[LLM] Found '{function_name}' at lines {response.start_line}-{response.end_line}")
-    
-    return FunctionInfo(
-        name=function_name,
-        start_line=response.start_line,
-        end_line=response.end_line,
-        full_code=full_code,
-        signature=response.signature
-    )
+    # No valid function found in any chunk
+    print(f"[ERROR] Function '{function_name}' not found after checking all candidates")
+    return None
 
 
 def extract_function_signature(function_code: str) -> str:
