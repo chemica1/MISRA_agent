@@ -132,6 +132,14 @@ def decide_action_node(state: AgentState) -> AgentState:
         
         print(f"[THINKING] {response.reasoning}")
         
+        # Check safety assessment
+        if not response.is_safe:
+            safety_msg = f"Unsafe modification detected: {response.safety_concerns or 'requires global changes'}"
+            state["error_message"] = safety_msg
+            print(f"[SAFETY RISK] {safety_msg}")
+            print(f"[SKIP] Will not apply risky changes")
+            return state
+        
         if response.action == "skip":
             state["error_message"] = f"LLM decided to skip: {response.reasoning}"
             print(f"[SKIP] {state['error_message']}")
@@ -249,7 +257,16 @@ def log_failure_node(state: AgentState) -> AgentState:
     if not violation:
         return state
     
-    print(f"[FAILED] Could not fix violation after {state['retry_count']} attempts")
+    # Determine if this is a safety skip or a failure
+    error_msg = state["error_message"] or "Unknown error"
+    is_safety_skip = "Unsafe modification detected" in error_msg or "safety" in error_msg.lower()
+    
+    if is_safety_skip:
+        print(f"[SKIPPED_UNSAFE] {error_msg}")
+        status = "skipped_unsafe"
+    else:
+        print(f"[FAILED] Could not fix violation after {state['retry_count']} attempts")
+        status = "failed"
     
     log = RefactoringLog.create(
         file_path=violation.file_path,
@@ -257,8 +274,8 @@ def log_failure_node(state: AgentState) -> AgentState:
         violation=violation.violation_description,
         original_code=state["function_code"] or "",
         modified_code="",
-        reason=state["error_message"] or "Unknown error",
-        status="failed",
+        reason=error_msg,
+        status=status,
         retry_count=state["retry_count"]
     )
     state["logs"].append(log)

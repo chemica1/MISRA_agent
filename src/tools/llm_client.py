@@ -11,6 +11,8 @@ class OllamaResponse(BaseModel):
     """Structured response from Ollama."""
     action: str  # "read_file" | "modify_code" | "next_violation" | "skip"
     reasoning: str
+    is_safe: bool = True  # Whether fix can be safely applied in isolation
+    safety_concerns: Optional[str] = None  # Description of risks if unsafe
     modified_code: Optional[str] = None
     reason: Optional[str] = None  # Short reason for modification (<100 chars)
 
@@ -148,15 +150,29 @@ CRITICAL RULES:
 4. Ensure code remains syntactically correct
 5. Provide a brief reason (<100 chars) for your changes
 
+SAFETY ANALYSIS - BEFORE proposing any fix, check if it requires:
+- Changing function signature (parameters, return type)
+- Modifying global variables or adding new ones
+- Adding new external function calls or dependencies
+- Changing function semantics or side effects
+
+If ANY of these apply, set "is_safe": false and "action": "skip" with clear explanation.
+
 Respond in JSON format:
 {
-    "action": "modify_code",
+    "action": "modify_code",  // or "skip" if unsafe
     "reasoning": "Brief explanation of what you're doing",
+    "is_safe": true,  // false if fix requires signature changes or global impacts
+    "safety_concerns": null,  // describe risks if is_safe=false
     "modified_code": "Complete modified function code",
     "reason": "Short reason for change (<100 chars)"
 }
 
-If you cannot fix the violation safely, use action: "skip" instead."""
+EXAMPLES:
+- Safe: Adding const to local variable, fixing brace style, renaming local variable
+- Unsafe: Changing return type, adding function parameter, modifying global state
+
+If you cannot fix the violation safely, use action: "skip" with is_safe: false."""
 
         user_prompt = f"""MISRA C Violation:
 {violation}

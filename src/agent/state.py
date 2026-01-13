@@ -26,7 +26,7 @@ class RefactoringLog(BaseModel):
     original_code: str
     modified_code: str
     reason: str
-    status: str  # "success" | "failed"
+    status: str  # "success" | "failed" | "skipped_unsafe"
     retry_count: int
     
     @classmethod

@@ -1,0 +1,5 @@
+file_path,function_name,violation_description
+tests/test_safety.c,safe_function_1,MISRA C:2012 Rule 8.9 - Variable 'x' should be declared const
+tests/test_safety.c,unsafe_function_return,MISRA C:2012 Rule 17.7 - Function should return error status instead of void
+tests/test_safety.c,unsafe_function_param,MISRA C:2012 Rule 8.13 - Parameter 'x' should be declared const
+tests/test_safety.c,safe_function_2,MISRA C:2012 Rule 5.1 - Variable name 'X' should use lowercase

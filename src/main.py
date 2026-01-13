@@ -21,13 +21,15 @@ def print_summary(state):
     """Print execution summary."""
     total = len(state["logs"])
     success = sum(1 for log in state["logs"] if log.status == "success")
-    failed = total - success
+    skipped_unsafe = sum(1 for log in state["logs"] if log.status == "skipped_unsafe")
+    failed = sum(1 for log in state["logs"] if log.status == "failed")
     
     print("\n" + "="*60)
     print("EXECUTION SUMMARY")
     print("="*60)
     print(f"Total violations processed: {total}")
     print(f"  [OK] Successfully fixed: {success}")
+    print(f"  [SKIP] Skipped (unsafe): {skipped_unsafe}")
     print(f"  [FAIL] Failed: {failed}")
     print(f"\nLogs saved to: {settings.log_file}")
     print(f"State saved to: {settings.state_file}")
