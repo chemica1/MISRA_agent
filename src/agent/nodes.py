@@ -293,4 +293,8 @@ def next_violation_node(state: AgentState) -> AgentState:
     # Save state for persistence
     save_state(state, settings.state_file)
     
+    # Save logs incrementally after each violation
+    from .state import save_logs
+    save_logs(state["logs"], settings.log_file)
+    
     return state
