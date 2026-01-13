@@ -16,7 +16,7 @@ class FunctionInfo(BaseModel):
 
 def find_function(file_content: str, function_name: str) -> Optional[FunctionInfo]:
     """
-    Find function in C source code.
+    Find function in C source code using LLM.
     
     Args:
         file_content: Full file content
@@ -25,51 +25,47 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
     Returns:
         FunctionInfo if found, None otherwise
     """
+    from .llm_client import OllamaClient
+    from ..config import settings
+    
+    # Initialize LLM client
+    llm = OllamaClient(
+        model=settings.ollama_model,
+        base_url=settings.ollama_base_url,
+        timeout=settings.ollama_timeout
+    )
+    
+    # Ask LLM to find function
+    response = llm.find_function_in_code(file_content, function_name)
+    
+    if not response.found:
+        print(f"[LLM] {response.reasoning}")
+        return None
+    
+    # Extract function code using line numbers
     lines = file_content.split('\n')
     
-    # Pattern to match function definition
-    # Matches: return_type function_name(...) {
-    pattern = rf'\b(\w+\s+)*{re.escape(function_name)}\s*\([^)]*\)\s*\{{'
+    # Validate line numbers
+    if response.start_line < 1 or response.end_line > len(lines):
+        print(f"[ERROR] Invalid line numbers from LLM: {response.start_line}-{response.end_line}")
+        return None
     
-    for i, line in enumerate(lines):
-        if re.search(pattern, line):
-            # Found function start
-            start_line = i + 1  # 1-indexed
-            
-            # Find matching closing brace
-            brace_count = 0
-            signature_lines = []
-            in_function = False
-            
-            for j in range(i, len(lines)):
-                current_line = lines[j]
-                
-                # Track braces
-                brace_count += current_line.count('{')
-                brace_count -= current_line.count('}')
-                
-                if '{' in current_line and not in_function:
-                    in_function = True
-                    # Capture signature (everything before opening brace)
-                    sig_match = re.search(r'(.+?)\s*\{', current_line)
-                    if sig_match:
-                        signature_lines.append(sig_match.group(1))
-                
-                if brace_count == 0 and in_function:
-                    # Found end of function
-                    end_line = j + 1  # 1-indexed
-                    full_code = '\n'.join(lines[i:j+1])
-                    signature = ' '.join(signature_lines).strip()
-                    
-                    return FunctionInfo(
-                        name=function_name,
-                        start_line=start_line,
-                        end_line=end_line,
-                        full_code=full_code,
-                        signature=signature
-                    )
+    if response.start_line > response.end_line:
+        print(f"[ERROR] Start line > end line: {response.start_line} > {response.end_line}")
+        return None
     
-    return None
+    # Extract function code (convert to 0-indexed)
+    full_code = '\n'.join(lines[response.start_line - 1:response.end_line])
+    
+    print(f"[LLM] Found '{function_name}' at lines {response.start_line}-{response.end_line}")
+    
+    return FunctionInfo(
+        name=function_name,
+        start_line=response.start_line,
+        end_line=response.end_line,
+        full_code=full_code,
+        signature=response.signature
+    )
 
 
 def extract_function_signature(function_code: str) -> str:

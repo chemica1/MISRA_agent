@@ -12,9 +12,18 @@ class OllamaResponse(BaseModel):
     action: str  # "read_file" | "modify_code" | "next_violation" | "skip"
     reasoning: str
     is_safe: bool = True  # Whether fix can be safely applied in isolation
-    safety_concerns: Optional[str] = None  # Description of risks if unsafe
+    safety_concerns: Optional[str] = None  # Description of risks if unsafe (<200 chars)
     modified_code: Optional[str] = None
     reason: Optional[str] = None  # Short reason for modification (<200 chars)
+
+
+class FunctionLocationResponse(BaseModel):
+    """Response for function location in C code."""
+    found: bool
+    start_line: int = 0  # 1-indexed, 0 if not found
+    end_line: int = 0    # 1-indexed, 0 if not found
+    signature: str = ""
+    reasoning: str = ""
 
 
 class OllamaClient:
@@ -197,3 +206,76 @@ Please correct your previous response based on this error."""
         except ValueError as e:
             # Return error for self-correction loop
             raise ValueError(f"LLM response validation failed: {e}\n\nRaw response:\n{response}")
+    
+    def find_function_in_code(
+        self,
+        file_content: str,
+        function_name: str
+    ) -> FunctionLocationResponse:
+        """
+        Ask LLM to locate a function in C source code.
+        
+        Args:
+            file_content: Full C file content
+            function_name: Name of function to find
+            
+        Returns:
+            FunctionLocationResponse with location info
+        """
+        # Add line numbers to file content for LLM reference
+        lines = file_content.split('\n')
+        numbered_content = '\n'.join(f"{i+1:4d}: {line}" for i, line in enumerate(lines))
+        
+        system_prompt = """You are an expert C code analyzer. Your task is to locate a specific function in C source code.
+
+CRITICAL RULES:
+1. Identify the EXACT start and end line numbers (1-indexed)
+2. Start line = first line of function declaration/definition
+3. End line = line with closing brace of function body
+4. Extract the complete function signature
+5. If function is not found, set found=false
+
+Respond in JSON format:
+{
+    "found": true,
+    "start_line": 42,
+    "end_line": 58,
+    "signature": "static int my_function(int param)",
+    "reasoning": "Brief explanation of how you found it"
+}
+
+If function is not found:
+{
+    "found": false,
+    "start_line": 0,
+    "end_line": 0,
+    "signature": "",
+    "reasoning": "Function 'xyz' not found in file"
+}"""
+
+        user_prompt = f"""Find the function named '{function_name}' in this C code.
+
+The code is shown with line numbers (format: "LINE: code"):
+
+```c
+{numbered_content}
+```
+
+Locate the function '{function_name}' and return its exact line numbers and signature."""
+
+        try:
+            response = self.generate(user_prompt, system=system_prompt)
+            data = self.parse_json_response(response)
+            return FunctionLocationResponse(**data)
+        except (ValueError, ValidationError) as e:
+            # Return not found on parsing errors
+            return FunctionLocationResponse(
+                found=False,
+                reasoning=f"LLM response parsing failed: {e}"
+            )
+        except (ConnectionError, TimeoutError) as e:
+            # Return not found on connection errors
+            return FunctionLocationResponse(
+                found=False,
+                reasoning=f"LLM connection error: {e}"
+            )
