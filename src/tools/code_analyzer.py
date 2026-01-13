@@ -52,12 +52,41 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
         timeout=settings.ollama_timeout
     )
     
+    
     # Step 2: For each candidate, extract context and verify with LLM
     for idx, candidate_line in enumerate(candidate_lines):
-        # Extract ±100 lines context around candidate
-        context_size = 100
-        start_line = max(0, candidate_line - context_size)
-        end_line = min(len(lines), candidate_line + context_size)
+        # Dynamic chunk sizing: find function end using brace counting
+        # Start from a bit before the candidate to capture full signature
+        start_line = max(0, candidate_line - 20)
+        
+        # Find function end by counting braces
+        brace_count = 0
+        in_function = False
+        end_line = candidate_line
+        
+        for j in range(candidate_line, len(lines)):
+            line = lines[j]
+            
+            # Track braces
+            brace_count += line.count('{')
+            brace_count -= line.count('}')
+            
+            if '{' in line and not in_function:
+                in_function = True
+            
+            if brace_count == 0 and in_function:
+                # Found end of function
+                end_line = j + 1
+                break
+            
+            # Safety limit: don't go beyond 2000 lines
+            if j - candidate_line > 2000:
+                print(f"[WARNING] Function appears to be >2000 lines, using limit")
+                end_line = j + 1
+                break
+        
+        # Add some padding after function end
+        end_line = min(len(lines), end_line + 10)
         
         chunk = '\n'.join(lines[start_line:end_line])
         chunk_line_count = end_line - start_line
