@@ -32,12 +32,21 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
     lines = file_content.split('\n')
     
     # Step 1: Quick regex scan to find approximate location(s)
-    pattern = rf'\b{re.escape(function_name)}\s*\('
+    # Match function name as word boundary (handles multiline declarations)
+    pattern = rf'\b{re.escape(function_name)}\b'
     candidate_lines = []
     
     for i, line in enumerate(lines):
         if re.search(pattern, line):
-            candidate_lines.append(i)
+            # Check if this looks like a function (has '(' within next 5 lines)
+            has_paren = False
+            for j in range(i, min(i + 5, len(lines))):
+                if '(' in lines[j]:
+                    has_paren = True
+                    break
+            
+            if has_paren:
+                candidate_lines.append(i)
     
     if not candidate_lines:
         print(f"[REGEX] Function '{function_name}' not found in file")

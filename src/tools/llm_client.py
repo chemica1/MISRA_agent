@@ -233,7 +233,11 @@ CRITICAL RULES:
 2. Start line = first line of function declaration/definition
 3. End line = line with closing brace of function body
 4. Extract the complete function signature
-5. If function is not found, set found=false
+5. VERIFY this is a function DEFINITION (has body with {}), not just:
+   - A function declaration/prototype (ends with ;)
+   - A function call
+   - A comment mentioning the function
+6. If function is not found or not a valid definition, set found=false
 
 Respond in JSON format:
 {
@@ -241,10 +245,10 @@ Respond in JSON format:
     "start_line": 42,
     "end_line": 58,
     "signature": "static int my_function(int param)",
-    "reasoning": "Brief explanation of how you found it"
+    "reasoning": "Found function definition with body at lines 42-58"
 }
 
-If function is not found:
+If function is not found or not a definition:
 {
     "found": false,
     "start_line": 0,
