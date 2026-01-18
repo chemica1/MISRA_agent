@@ -102,9 +102,7 @@ def _find_function_node(node, target_name: str, file_content: str):
                 return current
         
         # Add all children to stack for further traversal
-        # Reverse order to maintain left-to-right traversal
-        for child in reversed(current.children):
-            stack.append(child)
+        stack.extend(current.children)
     
     return None
 
