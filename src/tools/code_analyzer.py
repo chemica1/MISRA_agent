@@ -76,26 +76,35 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
 
 def _find_function_node(node, target_name: str, file_content: str):
     """
-    Recursively search for function definition with matching name.
+    Search for function definition with matching name using stack-based traversal.
+    
+    Uses iterative DFS (depth-first search) with a stack to traverse all nodes
+    in the AST, which is more efficient than recursion and avoids stack overflow.
     
     Args:
-        node: Tree-sitter AST node
+        node: Tree-sitter AST root node
         target_name: Function name to find
         file_content: Source code content
         
     Returns:
         Function definition node if found, None otherwise
     """
-    if node.type == 'function_definition':
-        func_name = _extract_function_name(node, file_content)
-        if func_name == target_name:
-            return node
+    # Stack-based DFS traversal (learned from user's code snippet)
+    stack = [node]
     
-    # Recursively search children
-    for child in node.children:
-        result = _find_function_node(child, target_name, file_content)
-        if result:
-            return result
+    while stack:
+        current = stack.pop()
+        
+        # Check if this is a function definition with matching name
+        if current.type == 'function_definition':
+            func_name = _extract_function_name(current, file_content)
+            if func_name == target_name:
+                return current
+        
+        # Add all children to stack for further traversal
+        # Reverse order to maintain left-to-right traversal
+        for child in reversed(current.children):
+            stack.append(child)
     
     return None
 
