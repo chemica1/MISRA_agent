@@ -85,7 +85,7 @@ def read_file(file_path: Path, project_root: str) -> str:
     if not validated_path.exists():
         raise FileNotFoundError(f"File not found: {validated_path}")
     
-    with open(validated_path, "r", encoding="utf-8") as f:
+    with open(validated_path, "r", encoding="utf-8", errors='ignore') as f:
         return f.read()
 
 
