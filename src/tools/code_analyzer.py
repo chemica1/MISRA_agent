@@ -16,8 +16,7 @@ class FunctionInfo(BaseModel):
 
 def find_function(file_content: str, function_name: str) -> Optional[FunctionInfo]:
     """
-    Find function in C source code using smart chunking.
-    Uses regex pre-filter + LLM verification on small chunks for large files.
+    Find function in C source code using tree-sitter parser.
     
     Args:
         file_content: Full file content
@@ -26,113 +25,93 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
     Returns:
         FunctionInfo if found, None otherwise
     """
-    from .llm_client import OllamaClient
-    from ..config import settings
-    
-    lines = file_content.split('\n')
-    
-    # Step 1: Quick regex scan to find approximate location(s)
-    # Match function name as word boundary (handles multiline declarations)
-    pattern = rf'\b{re.escape(function_name)}\b'
-    candidate_lines = []
-    
-    for i, line in enumerate(lines):
-        if re.search(pattern, line):
-            # Check if this looks like a function (has '(' within next 5 lines)
-            has_paren = False
-            for j in range(i, min(i + 5, len(lines))):
-                if '(' in lines[j]:
-                    has_paren = True
-                    break
-            
-            if has_paren:
-                candidate_lines.append(i)
-    
-    if not candidate_lines:
-        print(f"[REGEX] Function '{function_name}' not found in file")
+    try:
+        from tree_sitter import Language, Parser
+        import tree_sitter_c
+    except ImportError as e:
+        print(f"[ERROR] tree-sitter not installed: {e}")
+        print("[ERROR] Run: pip install tree-sitter tree-sitter-c")
         return None
     
-    print(f"[REGEX] Found {len(candidate_lines)} potential location(s) for '{function_name}'")
+    # Initialize parser
+    C_LANGUAGE = Language(tree_sitter_c.language())
+    parser = Parser(C_LANGUAGE)
     
-    # Initialize LLM client
-    llm = OllamaClient(
-        model=settings.ollama_model,
-        base_url=settings.ollama_base_url,
-        timeout=settings.ollama_timeout
+    # Parse the source code
+    tree = parser.parse(bytes(file_content, "utf8"))
+    root_node = tree.root_node
+    
+    # Find function definition
+    def find_function_node(node, target_name):
+        """Recursively search for function definition with matching name."""
+        if node.type == 'function_definition':
+            # Get the declarator node which contains the function name
+            declarator = None
+            for child in node.children:
+                if child.type == 'function_declarator':
+                    declarator = child
+                    break
+                elif child.type in ['pointer_declarator', 'attributed_declarator']:
+                    # Handle pointer return types or attributed functions
+                    for subchild in child.children:
+                        if subchild.type == 'function_declarator':
+                            declarator = subchild
+                            break
+            
+            if declarator:
+                # Find the identifier (function name)
+                identifier = None
+                for child in declarator.children:
+                    if child.type == 'identifier':
+                        identifier = child
+                        break
+                    elif child.type in ['pointer_declarator', 'field_identifier']:
+                        # Handle nested declarators
+                        for subchild in child.children:
+                            if subchild.type == 'identifier':
+                                identifier = subchild
+                                break
+                
+                if identifier:
+                    func_name = file_content[identifier.start_byte:identifier.end_byte]
+                    if func_name == target_name:
+                        return node
+        
+        # Recursively search children
+        for child in node.children:
+            result = find_function_node(child, target_name)
+            if result:
+                return result
+        
+        return None
+    
+    # Search for the function
+    func_node = find_function_node(root_node, function_name)
+    
+    if not func_node:
+        print(f"[TREE-SITTER] Function '{function_name}' not found in file")
+        return None
+    
+    # Extract function information
+    start_line = func_node.start_point[0] + 1  # tree-sitter uses 0-indexed lines
+    end_line = func_node.end_point[0] + 1
+    
+    # Extract full function code
+    lines = file_content.split('\n')
+    full_code = '\n'.join(lines[start_line - 1:end_line])
+    
+    # Extract function signature (everything before the opening brace)
+    signature = extract_function_signature(full_code)
+    
+    print(f"[TREE-SITTER] Found '{function_name}' at lines {start_line}-{end_line}")
+    
+    return FunctionInfo(
+        name=function_name,
+        start_line=start_line,
+        end_line=end_line,
+        full_code=full_code,
+        signature=signature
     )
-    
-    
-    # Step 2: For each candidate, extract context and verify with LLM
-    for idx, candidate_line in enumerate(candidate_lines):
-        # Dynamic chunk sizing: find function end using brace counting
-        # Start from a bit before the candidate to capture full signature
-        start_line = max(0, candidate_line - 20)
-        
-        # Find function end by counting braces
-        brace_count = 0
-        in_function = False
-        end_line = candidate_line
-        
-        for j in range(candidate_line, len(lines)):
-            line = lines[j]
-            
-            # Track braces
-            brace_count += line.count('{')
-            brace_count -= line.count('}')
-            
-            if '{' in line and not in_function:
-                in_function = True
-            
-            if brace_count == 0 and in_function:
-                # Found end of function
-                end_line = j + 1
-                break
-            
-            # Safety limit: don't go beyond 2000 lines
-            if j - candidate_line > 2000:
-                print(f"[WARNING] Function appears to be >2000 lines, using limit")
-                end_line = j + 1
-                break
-        
-        # Add some padding after function end
-        end_line = min(len(lines), end_line + 10)
-        
-        chunk = '\n'.join(lines[start_line:end_line])
-        chunk_line_count = end_line - start_line
-        
-        print(f"[CHUNK {idx+1}/{len(candidate_lines)}] Checking lines {start_line+1}-{end_line} ({chunk_line_count} lines)")
-        
-        # Ask LLM to verify and find exact boundaries in this chunk
-        response = llm.find_function_in_code(chunk, function_name)
-        
-        if response.found:
-            # Adjust line numbers from chunk to full file (chunk is 1-indexed)
-            actual_start = start_line + response.start_line
-            actual_end = start_line + response.end_line
-            
-            # Validate adjusted line numbers
-            if actual_start < 1 or actual_end > len(lines):
-                print(f"[ERROR] Invalid adjusted line numbers: {actual_start}-{actual_end}")
-                continue
-            
-            # Extract function code from full file
-            full_code = '\n'.join(lines[actual_start - 1:actual_end])
-            
-            print(f"[LLM] Found '{function_name}' at lines {actual_start}-{actual_end}")
-            
-            return FunctionInfo(
-                name=function_name,
-                start_line=actual_start,
-                end_line=actual_end,
-                full_code=full_code,
-                signature=response.signature
-            )
-        else:
-            print(f"[LLM] Chunk {idx+1}: {response.reasoning}")
-    
-    # No valid function found in any chunk
-    print(f"[ERROR] Function '{function_name}' not found after checking all candidates")
-    return None
 
 
 def extract_function_signature(function_code: str) -> str:
