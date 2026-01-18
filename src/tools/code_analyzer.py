@@ -87,15 +87,9 @@ def _find_function_node(node, target_name: str, file_content: str):
         Function definition node if found, None otherwise
     """
     if node.type == 'function_definition':
-        declarator = _get_function_declarator(node)
-        
-        if declarator:
-            identifier = _get_function_identifier(declarator)
-            
-            if identifier:
-                func_name = file_content[identifier.start_byte:identifier.end_byte]
-                if func_name == target_name:
-                    return node
+        func_name = _extract_function_name(node, file_content)
+        if func_name == target_name:
+            return node
     
     # Recursively search children
     for child in node.children:
@@ -106,30 +100,42 @@ def _find_function_node(node, target_name: str, file_content: str):
     return None
 
 
-def _get_function_declarator(node):
-    """Extract function declarator from function definition node."""
-    for child in node.children:
-        if child.type == 'function_declarator':
-            return child
-        elif child.type in ['pointer_declarator', 'attributed_declarator']:
-            # Handle pointer return types or attributed functions
-            for subchild in child.children:
-                if subchild.type == 'function_declarator':
-                    return subchild
-    return None
-
-
-def _get_function_identifier(declarator):
-    """Extract function identifier from declarator node."""
-    for child in declarator.children:
-        if child.type == 'identifier':
-            return child
-        elif child.type in ['pointer_declarator', 'field_identifier']:
-            # Handle nested declarators
-            for subchild in child.children:
-                if subchild.type == 'identifier':
-                    return subchild
-    return None
+def _extract_function_name(func_def_node, file_content: str) -> str:
+    """
+    Extract function name from function_definition node.
+    
+    Uses field-based declarator traversal to safely extract the function name.
+    Follows only the 'declarator' field chain, ignoring parameters/attributes.
+    
+    Args:
+        func_def_node: function_definition AST node
+        file_content: Source code content
+        
+    Returns:
+        Function name as string, or empty string if not found
+    """
+    # Get the declarator field from function_definition
+    decl = func_def_node.child_by_field_name('declarator')
+    if decl is None:
+        return ""
+    
+    # Follow the declarator chain until we find an identifier
+    cur = decl
+    while cur is not None and cur.type != 'identifier':
+        next_decl = cur.child_by_field_name('declarator')
+        if next_decl is None:
+            # Last resort: check direct children for identifier
+            for ch in cur.children:
+                if ch.type == 'identifier':
+                    return file_content[ch.start_byte:ch.end_byte]
+            break
+        cur = next_decl
+    
+    # If we found an identifier, extract its text
+    if cur is not None and cur.type == 'identifier':
+        return file_content[cur.start_byte:cur.end_byte]
+    
+    return ""
 
 
 # ============================================================================
