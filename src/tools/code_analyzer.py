@@ -43,10 +43,11 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
     parser = Parser(c_language)
     
     # Parse the source code
-    tree = parser.parse(bytes(file_content, "utf8"))
+    src_bytes = bytes(file_content, "utf8")
+    tree = parser.parse(src_bytes)
     
     # Search for the function
-    func_node = _find_function_node(tree.root_node, function_name, file_content)
+    func_node = _find_function_node(tree.root_node, function_name, src_bytes)
     
     if not func_node:
         print(f"[TREE-SITTER] Function '{function_name}' not found in file")
@@ -74,7 +75,7 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
     )
 
 
-def _find_function_node(node, target_name: str, file_content: str):
+def _find_function_node(node, target_name: str, src_bytes: bytes):
     """
     Search for function definition with matching name using stack-based traversal.
     
@@ -84,7 +85,7 @@ def _find_function_node(node, target_name: str, file_content: str):
     Args:
         node: Tree-sitter AST root node
         target_name: Function name to find
-        file_content: Source code content
+        src_bytes: Source code as bytes (for proper byte indexing)
         
     Returns:
         Function definition node if found, None otherwise
@@ -97,7 +98,7 @@ def _find_function_node(node, target_name: str, file_content: str):
         
         # Check if this is a function definition with matching name
         if current.type == 'function_definition':
-            func_name = _extract_function_name(current, file_content)
+            func_name = _extract_function_name(current, src_bytes)
             if func_name == target_name:
                 return current
         
@@ -107,7 +108,7 @@ def _find_function_node(node, target_name: str, file_content: str):
     return None
 
 
-def _extract_function_name(func_def_node, file_content: str) -> str:
+def _extract_function_name(func_def_node, src_bytes: bytes) -> str:
     """
     Extract function name from function_definition node.
     
@@ -116,7 +117,7 @@ def _extract_function_name(func_def_node, file_content: str) -> str:
     
     Args:
         func_def_node: function_definition AST node
-        file_content: Source code content
+        src_bytes: Source code as bytes (required by tree-sitter)
         
     Returns:
         Function name as string, or empty string if not found
@@ -134,13 +135,14 @@ def _extract_function_name(func_def_node, file_content: str) -> str:
             # Last resort: check direct children for identifier
             for ch in cur.children:
                 if ch.type == 'identifier':
-                    return file_content[ch.start_byte:ch.end_byte]
+                    # Use node.text property - automatically handles bytes->str conversion
+                    return ch.text.decode('utf8')
             break
         cur = next_decl
     
-    # If we found an identifier, extract its text
+    # If we found an identifier, extract its text using node.text
     if cur is not None and cur.type == 'identifier':
-        return file_content[cur.start_byte:cur.end_byte]
+        return cur.text.decode('utf8')
     
     return ""
 
