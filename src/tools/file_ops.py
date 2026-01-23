@@ -85,7 +85,7 @@ def read_file(file_path: Path, project_root: str) -> str:
     if not validated_path.exists():
         raise FileNotFoundError(f"File not found: {validated_path}")
     
-    with open(validated_path, "r", encoding="utf-8", errors='ignore') as f:
+    with open(validated_path, "r", encoding="utf-8", errors='replace') as f:
         return f.read()
 
 
@@ -112,7 +112,7 @@ def write_file(file_path: Path, content: str, project_root: str, create_backup: 
     validated_path.parent.mkdir(parents=True, exist_ok=True)
     
     # Write content
-    with open(validated_path, "w", encoding="utf-8") as f:
+    with open(validated_path, "w", encoding="utf-8", errors='replace') as f:
         f.write(content)
     
     print(f"[WRITE] Updated: {validated_path}")

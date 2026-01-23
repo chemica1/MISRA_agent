@@ -89,7 +89,7 @@ def save_state(state: AgentState, file_path: str) -> None:
 
 def load_state(file_path: str) -> AgentState:
     """Load agent state from JSON file."""
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, "r", encoding="utf-8", errors='replace') as f:
         data = json.load(f)
     
     return AgentState(
