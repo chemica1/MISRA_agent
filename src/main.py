@@ -64,7 +64,7 @@ def _handle_recursion_error(state: AgentState) -> AgentState:
     When recursion limit is exceeded due to infinite retry loop:
     1. Log current violation as failed
     2. Move to next violation
-    3. Save progress
+    3. Return updated state (loop will continue automatically)
     
     Args:
         state: Current agent state
@@ -93,12 +93,15 @@ def _handle_recursion_error(state: AgentState) -> AgentState:
         if state["violations_queue"]:
             state["violations_queue"] = state["violations_queue"][1:]
     
-    # Save progress
-    save_logs(state["logs"], settings.log_file)
-    save_state(state, settings.state_file)
+    # Reset state for next violation
+    state["current_violation"] = None
+    state["retry_count"] = 0
+    state["error_message"] = None
+    state["file_content"] = None
+    state["function_code"] = None
+    state["modified_code"] = None
     
-    print(f"[INFO] Progress saved. {len(state['violations_queue'])} violations remaining.")
-    print("[INFO] Please restart to continue with remaining violations.\n")
+    print(f"[INFO] {len(state['violations_queue'])} violations remaining. Continuing...\n")
     
     return state
 
@@ -178,12 +181,30 @@ def main():
         
         print("[INFO] Starting agent execution...\n")
         
-        # Run graph with recursion limit
-        try:
-            final_state = graph.invoke(state, {"recursion_limit": RECURSION_LIMIT})
-        except GraphRecursionError as e:
-            # Skip current violation and save progress when retry loop exceeds limit
-            final_state = _handle_recursion_error(state)
+        # Process violations with error recovery
+        # Continue even if GraphRecursionError occurs for a specific violation
+        current_state = state
+        while current_state["violations_queue"]:
+            try:
+                # Run graph with recursion limit for current violation
+                current_state = graph.invoke(current_state, {"recursion_limit": RECURSION_LIMIT})
+                
+                # Check if all violations are processed
+                if current_state["status"] == "completed":
+                    break
+                    
+            except GraphRecursionError as e:
+                # Skip current violation and continue with next
+                print(f"\n[ERROR] GraphRecursionError: {e}")
+                current_state = _handle_recursion_error(current_state)
+                
+                # If queue is empty after handling error, we're done
+                if not current_state["violations_queue"]:
+                    break
+                
+                print(f"[INFO] Continuing with {len(current_state['violations_queue'])} remaining violations...\n")
+        
+        final_state = current_state
         
         # Save final logs
         print(f"\n[INFO] Saving logs to: {settings.log_file}")
