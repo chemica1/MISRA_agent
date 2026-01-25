@@ -26,6 +26,16 @@ class FunctionLocationResponse(BaseModel):
     reasoning: str = ""
 
 
+class CodeValidationResponse(BaseModel):
+    """Response for LLM-based code validation."""
+    is_valid: bool
+    has_syntax_errors: bool = False
+    syntax_error_message: Optional[str] = None
+    preserves_semantics: bool = True
+    semantic_warnings: Optional[str] = None
+    reasoning: str = ""
+
+
 class OllamaClient:
     """Client for interacting with Ollama API."""
     
@@ -307,3 +317,93 @@ Locate the function '{function_name}' and return its exact line numbers and sign
                 found=False,
                 reasoning=f"LLM connection error: {e}"
             )
+    
+    def validate_code_with_llm(
+        self,
+        original_code: str,
+        modified_code: str,
+        violation_context: str
+    ) -> CodeValidationResponse:
+        """
+        Ask LLM to validate modified C code for syntax and semantic preservation.
+        
+        Args:
+            original_code: Original function code
+            modified_code: Modified function code to validate
+            violation_context: MISRA violation that was being fixed
+            
+        Returns:
+            CodeValidationResponse with validation results
+        """
+        system_prompt = """You are an expert C code validator specializing in MISRA C compliance.
+Your task is to validate modified C code to ensure:
+1. Syntax correctness
+2. Semantic preservation (same behavior as original)
+3. No unintended side effects
+
+CRITICAL RULES:
+1. Check if the modified code is syntactically valid C code
+2. Verify that the modification preserves the original logic and behavior
+3. Identify any potential issues or risks in the modification
+4. Consider the MISRA violation context when validating
+
+Respond in JSON format ONLY:
+{
+    "is_valid": true,
+    "has_syntax_errors": false,
+    "syntax_error_message": null,
+    "preserves_semantics": true,
+    "semantic_warnings": null,
+    "reasoning": "Brief explanation of validation result"
+}
+
+If there are issues:
+{
+    "is_valid": false,
+    "has_syntax_errors": true,
+    "syntax_error_message": "Description of syntax error",
+    "preserves_semantics": false,
+    "semantic_warnings": "Description of semantic issues",
+    "reasoning": "Detailed explanation of what's wrong"
+}
+
+**IMPORTANT**: Output ONLY the JSON object, nothing else."""
+
+        user_prompt = f"""Validate this code modification made to fix a MISRA C violation.
+
+MISRA Violation Context:
+{violation_context}
+
+Original Code:
+```c
+{original_code}
+```
+
+Modified Code:
+```c
+{modified_code}
+```
+
+Validate the modified code and return your assessment."""
+
+        try:
+            response = self.generate(user_prompt, system=system_prompt)
+            data = self.parse_json_response(response)
+            return CodeValidationResponse(**data)
+        except (ValueError, ValidationError) as e:
+            # Return invalid on parsing errors
+            return CodeValidationResponse(
+                is_valid=False,
+                has_syntax_errors=True,
+                syntax_error_message=f"LLM validation failed: {e}",
+                reasoning=f"Failed to parse LLM validation response: {e}"
+            )
+        except (ConnectionError, TimeoutError) as e:
+            # Return invalid on connection errors
+            return CodeValidationResponse(
+                is_valid=False,
+                has_syntax_errors=True,
+                syntax_error_message=f"LLM connection error: {e}",
+                reasoning=f"Could not connect to LLM for validation: {e}"
+            )
+

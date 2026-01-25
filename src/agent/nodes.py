@@ -7,8 +7,6 @@ from ..tools import (
     read_file,
     write_file,
     find_function,
-    validate_c_syntax,
-    check_semantic_preservation,
     OllamaClient,
     SecurityError
 )
@@ -177,31 +175,57 @@ def decide_action_node(state: AgentState) -> AgentState:
 
 def validate_modification_node(state: AgentState) -> AgentState:
     """
-    Validate the modified code.
+    Validate the modified code using LLM.
     """
-    if not state["modified_code"]:
+    violation = state["current_violation"]
+    if not state["modified_code"] or not violation:
         return state
     
-    print(f"[OBSERVATION] Validating modified code...")
+    print(f"[OBSERVATION] Validating modified code with LLM...")
     
-    # Syntax validation
-    is_valid, syntax_error = validate_c_syntax(state["modified_code"])
-    if not is_valid:
-        state["error_message"] = f"Syntax error: {syntax_error}"
-        print(f"[ERROR] {state['error_message']}")
-        return state
-    
-    print(f"[OBSERVATION] Syntax validation passed [OK]")
-    
-    # Semantic preservation check
-    if state["function_code"]:
-        is_preserved, warning = check_semantic_preservation(
-            state["function_code"],
-            state["modified_code"]
+    try:
+        # Initialize Ollama client
+        llm = OllamaClient(
+            model=settings.ollama_model,
+            base_url=settings.ollama_base_url,
+            timeout=settings.ollama_timeout
         )
         
-        if warning:
-            print(f"[WARNING] {warning}")
+        # Get LLM validation
+        validation_result = llm.validate_code_with_llm(
+            original_code=state["function_code"] or "",
+            modified_code=state["modified_code"],
+            violation_context=violation.violation_description
+        )
+        
+        print(f"[THINKING] {validation_result.reasoning}")
+        
+        # Check validation result
+        if not validation_result.is_valid:
+            error_parts = []
+            
+            if validation_result.has_syntax_errors and validation_result.syntax_error_message:
+                error_parts.append(f"Syntax error: {validation_result.syntax_error_message}")
+            
+            if not validation_result.preserves_semantics and validation_result.semantic_warnings:
+                error_parts.append(f"Semantic issue: {validation_result.semantic_warnings}")
+            
+            state["error_message"] = " | ".join(error_parts) if error_parts else "Validation failed"
+            print(f"[ERROR] {state['error_message']}")
+            return state
+        
+        # Show warnings even if valid
+        if validation_result.semantic_warnings:
+            print(f"[WARNING] {validation_result.semantic_warnings}")
+        
+        print(f"[OBSERVATION] LLM validation passed [OK]")
+        
+    except (ConnectionError, TimeoutError) as e:
+        state["error_message"] = f"LLM validation error: {e}"
+        print(f"[ERROR] {state['error_message']}")
+    except Exception as e:
+        state["error_message"] = f"Validation failed: {e}"
+        print(f"[ERROR] {state['error_message']}")
     
     return state
 
