@@ -96,23 +96,32 @@ class OllamaClient:
             ValueError: If JSON cannot be parsed
         """
         # Try to extract JSON from markdown code blocks
-        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
+        json_match = re.search(r'```(?:json)?\s*({.*?})\s*```', response, re.DOTALL)
         if json_match:
             json_str = json_match.group(1)
         else:
-            # Try to find JSON object directly
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            # Try to find JSON object directly (greedy match)
+            json_match = re.search(r'{.*}', response, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
             else:
-                raise ValueError("No JSON found in response")
+                raise ValueError(f"No JSON found in response. Response starts with: {response[:200]}...")
+        
+        # Clean up common LLM mistakes
+        json_str = json_str.strip()
+        # Remove trailing commas before closing braces/brackets
+        json_str = re.sub(r',\s*}', '}', json_str)
+        json_str = re.sub(r',\s*]', ']', json_str)
+        # Remove comments (// and /* */)
+        json_str = re.sub(r'//.*?$', '', json_str, flags=re.MULTILINE)
+        json_str = re.sub(r'/\*.*?\*/', '', json_str, flags=re.DOTALL)
         
         # Parse JSON with strict=False to handle Korean text and backslash escapes
         # strict=False allows control characters and unescaped backslashes
         try:
             return json.loads(json_str, strict=False)
         except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON: {e}")
+            raise ValueError(f"Invalid JSON: {e}. JSON excerpt: {json_str[:200]}...")
     
     def validate_response(self, response: str) -> OllamaResponse:
         """
@@ -153,6 +162,8 @@ class OllamaClient:
         system_prompt = """You are an expert embedded C developer specializing in MISRA C compliance.
 Your task is to refactor C code to fix MISRA C violations while preserving the original logic.
 
+**CRITICAL: You MUST respond with ONLY valid JSON. Do not include any explanatory text before or after the JSON.**
+
 CRITICAL RULES:
 1. **FIRST STEP**: Analyze if the code ALREADY complies with the mentioned MISRA rule
    - Carefully check if the violation actually exists in the current code
@@ -172,23 +183,29 @@ SAFETY ANALYSIS - BEFORE proposing any fix, check if it requires:
 
 If ANY of these apply, set "is_safe": false and "action": "skip" with clear explanation.
 
-Respond in JSON format:
+**OUTPUT FORMAT - MUST BE VALID JSON ONLY:**
 {
-    "action": "modify_code",  // or "skip" if unsafe, or "already_compliant" if no violation exists
+    "action": "modify_code",
     "reasoning": "Brief explanation of what you're doing or why it's already compliant",
-    "is_safe": true,  // false if fix requires signature changes or global impacts
-    "safety_concerns": null,  // describe risks if is_safe=false (<200 chars)
-    "modified_code": "Complete modified function code",  // null if already_compliant or skip
+    "is_safe": true,
+    "safety_concerns": null,
+    "modified_code": "Complete modified function code",
     "reason": "Short reason for change (<200 chars)"
 }
 
-EXAMPLES:
-- Already compliant: "Code already follows MISRA C:2012 Rule 8.4, function prototype exists in header"
-- Safe: Adding const to local variable, fixing brace style, renaming local variable
-- Unsafe: Changing return type, adding function parameter, modifying global state
+**IMPORTANT**: 
+- Do NOT add trailing commas
+- Do NOT add comments in JSON
+- Do NOT include any text outside the JSON object
+- action must be one of: "modify_code", "skip", "already_compliant"
+- modified_code should be null if action is "skip" or "already_compliant"
 
-If code is already compliant, use action: "already_compliant".
-If you cannot fix the violation safely, use action: "skip" with is_safe: false."""
+EXAMPLES:
+- Already compliant: {"action": "already_compliant", "reasoning": "Code already follows MISRA C:2012 Rule 8.4", ...}
+- Safe fix: {"action": "modify_code", "reasoning": "Adding const qualifier", "is_safe": true, ...}
+- Unsafe: {"action": "skip", "reasoning": "Requires signature change", "is_safe": false, ...}
+
+**REMEMBER: Output ONLY the JSON object, nothing else.**"""
 
         user_prompt = f"""MISRA C Violation:
 {violation}
