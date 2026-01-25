@@ -195,6 +195,37 @@ def validate_modification_node(state: AgentState) -> AgentState:
     return state
 
 
+def _minimize_code_diff(original: str, modified: str) -> tuple[str, str]:
+    """
+    Helper to extract only changed lines for logging.
+    Returns (minimized_original, minimized_modified).
+    """
+    import difflib
+    
+    orig_lines = original.splitlines()
+    mod_lines = modified.splitlines()
+    
+    matcher = difflib.SequenceMatcher(None, orig_lines, mod_lines)
+    
+    min_orig = []
+    min_mod = []
+    
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'equal':
+            continue
+            
+        if tag in ('replace', 'delete'):
+            min_orig.extend(orig_lines[i1:i2])
+        if tag in ('replace', 'insert'):
+            min_mod.extend(mod_lines[j1:j2])
+            
+    # If no changes found (unlikely if we are here), return full or empty
+    if not min_orig and not min_mod:
+        return "(no changes identified)", "(no changes identified)"
+        
+    return "\n".join(min_orig), "\n".join(min_mod)
+
+
 def apply_modification_node(state: AgentState) -> AgentState:
     """
     Apply the modification to the file.
@@ -229,13 +260,19 @@ def apply_modification_node(state: AgentState) -> AgentState:
             write_file(file_path, new_content, str(project_root), create_backup=True)
             print(f"[SUCCESS] Fixed MISRA violation")
             
+            # Minimize log content
+            min_orig, min_mod = _minimize_code_diff(
+                state["function_code"] or "", 
+                state["modified_code"]
+            )
+            
             # Create log entry
             log = RefactoringLog.create(
                 file_path=violation.file_path,
                 function_name=violation.function_name,
                 violation=violation.violation_description,
-                original_code=state["function_code"] or "",
-                modified_code=state["modified_code"],
+                original_code=min_orig,
+                modified_code=min_mod,
                 reason="MISRA C compliance fix",
                 status="success",
                 retry_count=state["retry_count"]
@@ -268,12 +305,28 @@ def log_failure_node(state: AgentState) -> AgentState:
         print(f"[FAILED] Could not fix violation after {state['retry_count']} attempts")
         status = "failed"
     
+    # For failures, still minimize if there was a modified_code (for retry cases)
+    original_to_log = state["function_code"] or ""
+    modified_to_log = ""
+    
+    if state.get("modified_code"):
+        # If there was an attempted modification, show the diff
+        original_to_log, modified_to_log = _minimize_code_diff(
+            state["function_code"] or "",
+            state["modified_code"]
+        )
+    elif original_to_log:
+        # If no modification was attempted, just show first few lines of original
+        lines = original_to_log.splitlines()
+        if len(lines) > 3:
+            original_to_log = "\n".join(lines[:3]) + "\n... (truncated)"
+    
     log = RefactoringLog.create(
         file_path=violation.file_path,
         function_name=violation.function_name,
         violation=violation.violation_description,
-        original_code=state["function_code"] or "",
-        modified_code="",
+        original_code=original_to_log,
+        modified_code=modified_to_log,
         reason=error_msg,
         status=status,
         retry_count=state["retry_count"]
