@@ -9,7 +9,7 @@ from pydantic import BaseModel, ValidationError
 
 class OllamaResponse(BaseModel):
     """Structured response from Ollama."""
-    action: str  # "read_file" | "modify_code" | "next_violation" | "skip"
+    action: str  # "read_file" | "modify_code" | "next_violation" | "skip" | "already_compliant"
     reasoning: str
     is_safe: bool = True  # Whether fix can be safely applied in isolation
     safety_concerns: Optional[str] = None  # Description of risks if unsafe (<200 chars)
@@ -154,11 +154,15 @@ class OllamaClient:
 Your task is to refactor C code to fix MISRA C violations while preserving the original logic.
 
 CRITICAL RULES:
-1. Only fix the specific MISRA violation mentioned
-2. Do NOT change business logic or behavior
-3. Keep modifications minimal and conservative
-4. Ensure code remains syntactically correct
-5. Provide a brief reason (<200 chars) for your changes
+1. **FIRST STEP**: Analyze if the code ALREADY complies with the mentioned MISRA rule
+   - Carefully check if the violation actually exists in the current code
+   - If the code is already compliant, use action: "already_compliant"
+   - This is important to avoid unnecessary modifications
+2. Only fix the specific MISRA violation mentioned
+3. Do NOT change business logic or behavior
+4. Keep modifications minimal and conservative
+5. Ensure code remains syntactically correct
+6. Provide a brief reason (<200 chars) for your changes
 
 SAFETY ANALYSIS - BEFORE proposing any fix, check if it requires:
 - Changing function signature (parameters, return type)
@@ -170,18 +174,20 @@ If ANY of these apply, set "is_safe": false and "action": "skip" with clear expl
 
 Respond in JSON format:
 {
-    "action": "modify_code",  // or "skip" if unsafe
-    "reasoning": "Brief explanation of what you're doing",
+    "action": "modify_code",  // or "skip" if unsafe, or "already_compliant" if no violation exists
+    "reasoning": "Brief explanation of what you're doing or why it's already compliant",
     "is_safe": true,  // false if fix requires signature changes or global impacts
     "safety_concerns": null,  // describe risks if is_safe=false (<200 chars)
-    "modified_code": "Complete modified function code",
+    "modified_code": "Complete modified function code",  // null if already_compliant or skip
     "reason": "Short reason for change (<200 chars)"
 }
 
 EXAMPLES:
+- Already compliant: "Code already follows MISRA C:2012 Rule 8.4, function prototype exists in header"
 - Safe: Adding const to local variable, fixing brace style, renaming local variable
 - Unsafe: Changing return type, adding function parameter, modifying global state
 
+If code is already compliant, use action: "already_compliant".
 If you cannot fix the violation safely, use action: "skip" with is_safe: false."""
 
         user_prompt = f"""MISRA C Violation:

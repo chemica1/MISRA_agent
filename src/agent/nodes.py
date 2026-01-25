@@ -145,6 +145,12 @@ def decide_action_node(state: AgentState) -> AgentState:
             print(f"[SKIP] Will not apply risky changes")
             return state
         
+        # Check if code is already compliant
+        if response.action == "already_compliant":
+            state["error_message"] = f"Already compliant: {response.reasoning}"
+            print(f"[ALREADY COMPLIANT] {response.reasoning}")
+            return state
+        
         if response.action == "skip":
             state["error_message"] = f"LLM decided to skip: {response.reasoning}"
             print(f"[SKIP] {state['error_message']}")
@@ -299,11 +305,15 @@ def log_failure_node(state: AgentState) -> AgentState:
     if not violation:
         return state
     
-    # Determine if this is a safety skip or a failure
+    # Determine if this is a safety skip, already compliant, or a failure
     error_msg = state["error_message"] or "Unknown error"
     is_safety_skip = "Unsafe modification detected" in error_msg or "safety" in error_msg.lower()
+    is_already_compliant = "Already compliant" in error_msg
     
-    if is_safety_skip:
+    if is_already_compliant:
+        print(f"[ALREADY_COMPLIANT] {error_msg}")
+        status = "already_compliant"
+    elif is_safety_skip:
         print(f"[SKIPPED_UNSAFE] {error_msg}")
         status = "skipped_unsafe"
     else:
