@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 from .config import settings
-from .agent.state import initialize_state, load_state, save_logs
+from .agent.state import initialize_state, load_state, save_logs, save_state
 from .agent.graph import build_agent_graph
 from .tools import parse_violations_csv
 
@@ -136,7 +136,6 @@ def main():
                         state["violations_queue"] = state["violations_queue"][1:]
                 
                 # Save current progress
-                from .agent.state import save_logs, save_state
                 save_logs(state["logs"], settings.log_file)
                 save_state(state, settings.state_file)
                 
