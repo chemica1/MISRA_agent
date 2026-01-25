@@ -43,7 +43,7 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
     parser = Parser(c_language)
     
     # Parse the source code
-    src_bytes = bytes(file_content, "utf8")
+    src_bytes = file_content.encode("utf-8", errors="replace")
     tree = parser.parse(src_bytes)
     
     # Search for the function

@@ -109,7 +109,7 @@ class OllamaClient:
         
         # Parse JSON
         try:
-            return json.loads(json_str)
+            return json.loads(json_str, strict=False)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON: {e}")
     

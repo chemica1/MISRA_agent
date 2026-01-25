@@ -105,8 +105,48 @@ def main():
         
         print("[INFO] Starting agent execution...\n")
         
-        # Run the graph
-        final_state = graph.invoke(state)
+        # Run the graph with recursion limit
+        try:
+            final_state = graph.invoke(state, {"recursion_limit": 50})
+        except Exception as e:
+            # Check for GraphRecursionError
+            from langgraph.errors import GraphRecursionError
+            
+            if isinstance(e, GraphRecursionError):
+                print(f"\n[ERROR] GraphRecursionError: {e}")
+                print("[SKIP] Infinite retry loop detected - skipping problematic violation")
+                
+                # Log the failure for current violation
+                if state.get("current_violation"):
+                    from .agent.state import RefactoringLog
+                    log = RefactoringLog.create(
+                        file_path=state["current_violation"].file_path,
+                        function_name=state["current_violation"].function_name,
+                        violation=state["current_violation"].violation_description,
+                        original_code="",
+                        modified_code="",
+                        reason=f"GraphRecursionError: Exceeded retry limit",
+                        status="failed",
+                        retry_count=state.get("retry_count", 0)
+                    )
+                    state["logs"].append(log)
+                    
+                    # Move to next violation
+                    if state["violations_queue"]:
+                        state["violations_queue"] = state["violations_queue"][1:]
+                
+                # Save current progress
+                from .agent.state import save_logs, save_state
+                save_logs(state["logs"], settings.log_file)
+                save_state(state, settings.state_file)
+                
+                print(f"[INFO] Progress saved. {len(state['violations_queue'])} violations remaining.")
+                print("[INFO] Please restart to continue with remaining violations.\n")
+                
+                final_state = state
+            else:
+                # Re-raise other exceptions
+                raise
         
         # Save final logs
         print(f"\n[INFO] Saving logs to: {settings.log_file}")
