@@ -39,12 +39,12 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
     """
 
     # Initialize parser
-    # Tree-sitter parser 초기화
+    # Initialize tree-sitter parser
     c_language = Language(tree_sitter_c.language())
     parser = Parser(c_language)
     
-    # 소스 코드를 바이트로 변환
-    # errors="replace"로 인코딩 불가능한 문자(한글 등)를 대체 문자로 변환
+    # Convert source code to bytes
+    # errors="replace" converts unencodable characters (e.g. Korean) to replacement characters
     src_bytes = file_content.encode("utf-8", errors="replace")
     tree = parser.parse(src_bytes)
     
@@ -92,23 +92,23 @@ def _find_function_node(node, target_name: str, src_bytes: bytes):
     Returns:
         Function definition node if found, None otherwise
     """
-    # Stack 기반 DFS (깊이 우선 탐색) 순회
-    # 재귀 대신 stack을 사용하여 stack overflow 방지
+    # Stack-based DFS (depth-first search) traversal
+    # Use stack instead of recursion to prevent stack overflow
     stack = [node]
     
     while stack:
         current = stack.pop()
         
-        # 현재 노드가 function_definition인지 확인
+        # Check if current node is a function_definition
         if current.type == 'function_definition':
             func_name = _extract_function_name(current, src_bytes)
             if func_name == target_name:
-                return current  # 찾은 함수 반환
+                return current  # Return found function
         
-        # 모든 자식 노드를 stack에 추가하여 계속 탐색
+        # Add all child nodes to stack for continued traversal
         stack.extend(current.children)
     
-    return None  # 함수를 찾지 못함
+    return None  # Function not found
 
 
 def _extract_function_name(func_def_node, src_bytes: bytes) -> str:
@@ -125,31 +125,31 @@ def _extract_function_name(func_def_node, src_bytes: bytes) -> str:
     Returns:
         Function name as string, or empty string if not found
     """
-    # function_definition에서 declarator 필드를 가져옴
-    # declarator는 함수의 이름과 매개변수 정보를 포함
+    # Get declarator field from function_definition
+    # declarator contains function name and parameter information
     decl = func_def_node.child_by_field_name('declarator')
     if decl is None:
         return ""
     
-    # declarator 체인을 따라가며 identifier(함수 이름)를 찾음
+    # Follow declarator chain to find identifier (function name)
     cur = decl
     while cur is not None and cur.type != 'identifier':
         next_decl = cur.child_by_field_name('declarator')
         if next_decl is None:
-            # 마지막 수단: 직접 자식 노드에서 identifier 찾기
+            # Last resort: find identifier in direct child nodes
             for ch in cur.children:
                 if ch.type == 'identifier':
-                    # node.text는 bytes이므로 utf8로 디코딩
+                    # node.text is bytes, so decode to utf8
                     return ch.text.decode('utf8')
             break
         cur = next_decl
     
     
-    # identifier를 찾았으면 텍스트 추출
+    # Extract text if identifier is found
     if cur is not None and cur.type == 'identifier':
         return cur.text.decode('utf8')
     
-    return ""  # 함수 이름을 찾지 못함
+    return ""  # Function name not found
 
 
 # ============================================================================

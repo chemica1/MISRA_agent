@@ -20,12 +20,12 @@ from .agent.state import (
 from .agent.graph import build_agent_graph
 from .tools import parse_violations_csv
 
-# 상수 정의
-RECURSION_LIMIT = 50  # 재시도 루프의 최대 깊이
+# Constants
+RECURSION_LIMIT = 50  # Maximum recursion depth for retry loops
 
 
 def print_banner():
-    """시작 배너 출력."""
+    """Print startup banner."""
     print("""
 ============================================================
         MISRA C Refactoring Agent (Powered by Ollama)
@@ -34,10 +34,10 @@ def print_banner():
 
 
 def print_summary(state: AgentState):
-    """실행 요약 출력.
+    """Print execution summary.
     
     Args:
-        state: 최종 agent state (logs 포함)
+        state: Final agent state (includes logs)
     """
     total = len(state["logs"])
     success = sum(1 for log in state["logs"] if log.status == "success")
@@ -57,23 +57,23 @@ def print_summary(state: AgentState):
 
 
 def _handle_recursion_error(state: AgentState) -> AgentState:
-    """GraphRecursionError 발생 시 처리.
+    """Handle GraphRecursionError when it occurs.
     
-    무한 재시도 루프로 인해 recursion limit을 초과한 경우:
-    1. 현재 violation을 failed로 로그
-    2. 다음 violation으로 이동
-    3. 진행 상황 저장
+    When recursion limit is exceeded due to infinite retry loop:
+    1. Log current violation as failed
+    2. Move to next violation
+    3. Save progress
     
     Args:
-        state: 현재 agent state
+        state: Current agent state
         
     Returns:
-        업데이트된 state
+        Updated state
     """
     print("\n[ERROR] GraphRecursionError: Infinite retry loop detected")
     print("[SKIP] Skipping problematic violation and continuing...")
     
-    # 현재 violation을 실패로 기록
+    # Log current violation as failed
     if state.get("current_violation"):
         log = RefactoringLog.create(
             file_path=state["current_violation"].file_path,
@@ -87,11 +87,11 @@ def _handle_recursion_error(state: AgentState) -> AgentState:
         )
         state["logs"].append(log)
         
-        # 다음 violation으로 이동
+        # Move to next violation
         if state["violations_queue"]:
             state["violations_queue"] = state["violations_queue"][1:]
     
-    # 진행 상황 저장
+    # Save progress
     save_logs(state["logs"], settings.log_file)
     save_state(state, settings.state_file)
     
@@ -102,14 +102,14 @@ def _handle_recursion_error(state: AgentState) -> AgentState:
 
 
 def _load_or_initialize_state():
-    """이전 세션에서 복원하거나 새로운 state 초기화.
+    """Load from previous session or initialize new state.
     
     Returns:
-        AgentState 또는 None (에러 발생 시)
+        AgentState or None (on error)
     """
     state_file = Path(settings.state_file)
     
-    # 이전 state 파일이 있는지 확인
+    # Check if previous state file exists
     if state_file.exists():
         print(f"[INFO] Found existing state file: {settings.state_file}")
         response = input("Resume from previous session? (y/n): ").strip().lower()
@@ -124,7 +124,7 @@ def _load_or_initialize_state():
                 print(f"[ERROR] Failed to load state: {e}")
                 print("[INFO] Starting fresh session...")
     
-    # 새로운 세션 시작
+    # Start new session
     print(f"[INFO] Loading violations from: {settings.violations_csv}")
     
     try:
@@ -149,15 +149,15 @@ def _load_or_initialize_state():
 
 
 def main():
-    """메인 실행 함수."""
+    """Main execution function."""
     print_banner()
     
-    # State 로드 또는 초기화
+    # Load or initialize state
     state = _load_or_initialize_state()
     if state is None:
         return
     
-    # 프로젝트 루트 경로 검증
+    # Verify project root path
     project_root = settings.get_project_root_path()
     if not project_root.exists():
         print(f"[ERROR] Project root not found: {project_root}")
@@ -168,7 +168,7 @@ def main():
     print(f"[INFO] Using Ollama model: {settings.ollama_model}")
     print(f"[INFO] Max retries per violation: {settings.max_retries}")
     
-    # Agent 워크플로우 빌드 및 실행
+    # Build and run agent workflow
     print("\n[INFO] Building agent workflow...")
     
     try:
@@ -176,28 +176,28 @@ def main():
         
         print("[INFO] Starting agent execution...\n")
         
-        # Graph 실행 (recursion limit 설정)
+        # Run graph with recursion limit
         try:
             final_state = graph.invoke(state, {"recursion_limit": RECURSION_LIMIT})
         except GraphRecursionError as e:
-            # 재시도 루프 초과 시 현재 violation을 스킵하고 진행 상황 저장
+            # Skip current violation and save progress when retry loop exceeds limit
             final_state = _handle_recursion_error(state)
         
-        # 최종 로그 저장
+        # Save final logs
         print(f"\n[INFO] Saving logs to: {settings.log_file}")
         save_logs(final_state["logs"], settings.log_file)
         
-        # 실행 요약 출력
+        # Print summary
         print_summary(final_state)
         
     except KeyboardInterrupt:
-        # 사용자가 Ctrl+C로 중단한 경우
+        # User interrupted with Ctrl+C
         print("\n\n[INTERRUPTED] Execution interrupted by user")
         print(f"[INFO] State saved to: {settings.state_file}")
         print("[INFO] Run again to resume from this point")
         sys.exit(0)
     except Exception as e:
-        # 예상치 못한 에러 발생
+        # Unexpected error occurred
         print(f"\n[ERROR] Agent execution failed: {e}")
         traceback.print_exc()
         sys.exit(1)
