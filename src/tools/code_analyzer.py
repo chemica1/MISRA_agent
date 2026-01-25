@@ -45,6 +45,7 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
     
     # Convert source code to bytes
     # errors="replace" converts unencodable characters (e.g. Korean) to replacement characters
+    function_name = function_name.replace("(", "").replace(")", "").strip()
     src_bytes = file_content.encode("utf-8", errors="replace")
     tree = parser.parse(src_bytes)
     

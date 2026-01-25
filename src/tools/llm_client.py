@@ -7,6 +7,14 @@ from typing import Optional, Dict, Any
 from pydantic import BaseModel, ValidationError
 
 
+from .prompts import (
+    DECIDE_ACTION_SYSTEM_PROMPT,
+    DECIDE_ACTION_USER_TEMPLATE,
+    FIND_FUNCTION_SYSTEM_PROMPT,
+    FIND_FUNCTION_USER_TEMPLATE
+)
+
+
 class OllamaResponse(BaseModel):
     """Structured response from Ollama."""
     action: str  # "read_file" | "modify_code" | "next_violation" | "skip" | "already_compliant"
@@ -26,14 +34,7 @@ class FunctionLocationResponse(BaseModel):
     reasoning: str = ""
 
 
-class CodeValidationResponse(BaseModel):
-    """Response for LLM-based code validation."""
-    is_valid: bool
-    has_syntax_errors: bool = False
-    syntax_error_message: Optional[str] = None
-    preserves_semantics: bool = True
-    semantic_warnings: Optional[str] = None
-    reasoning: str = ""
+
 
 
 class OllamaClient:
@@ -160,85 +161,24 @@ class OllamaClient:
     ) -> OllamaResponse:
         """
         Ask LLM to decide on refactoring action.
-        
-        Args:
-            violation: MISRA C violation description
-            function_code: Current function code
-            error_feedback: Previous error message for self-correction
-            
-        Returns:
-            Structured decision
         """
-        system_prompt = """You are an expert embedded C developer specializing in MISRA C compliance.
-Your task is to refactor C code to fix MISRA C violations while preserving the original logic.
+        system_prompt = DECIDE_ACTION_SYSTEM_PROMPT
 
-**CRITICAL: You MUST respond with ONLY valid JSON. Do not include any explanatory text before or after the JSON.**
-
-CRITICAL RULES:
-1. **FIRST STEP**: Analyze if the code ALREADY complies with the mentioned MISRA rule
-   - Carefully check if the violation actually exists in the current code
-   - If the code is already compliant, use action: "already_compliant"
-   - This is important to avoid unnecessary modifications
-2. Only fix the specific MISRA violation mentioned
-3. Do NOT change business logic or behavior
-4. Keep modifications minimal and conservative
-5. Ensure code remains syntactically correct
-6. Provide a brief reason (<200 chars) for your changes
-
-SAFETY ANALYSIS - BEFORE proposing any fix, check if it requires:
-- Changing function signature (parameters, return type)
-- Modifying global variables or adding new ones
-- Adding new external function calls or dependencies
-- Changing function semantics or side effects
-
-If ANY of these apply, set "is_safe": false and "action": "skip" with clear explanation.
-
-**OUTPUT FORMAT - MUST BE VALID JSON ONLY:**
-{
-    "action": "modify_code",
-    "reasoning": "Brief explanation of what you're doing or why it's already compliant",
-    "is_safe": true,
-    "safety_concerns": null,
-    "modified_code": "Complete modified function code",
-    "reason": "Short reason for change (<200 chars)"
-}
-
-**IMPORTANT**: 
-- Do NOT add trailing commas
-- Do NOT add comments in JSON
-- Do NOT include any text outside the JSON object
-- action must be one of: "modify_code", "skip", "already_compliant"
-- modified_code should be null if action is "skip" or "already_compliant"
-
-EXAMPLES:
-- Already compliant: {"action": "already_compliant", "reasoning": "Code already follows MISRA C:2012 Rule 8.4", ...}
-- Safe fix: {"action": "modify_code", "reasoning": "Adding const qualifier", "is_safe": true, ...}
-- Unsafe: {"action": "skip", "reasoning": "Requires signature change", "is_safe": false, ...}
-
-**REMEMBER: Output ONLY the JSON object, nothing else.**"""
-
-        user_prompt = f"""MISRA C Violation:
-{violation}
-
-Current Function Code:
-```c
-{function_code}
-```
-"""
+        user_prompt = DECIDE_ACTION_USER_TEMPLATE.format(
+            violation=violation,
+            function_code=function_code
+        )
 
         if error_feedback:
-            user_prompt += f"""
-PREVIOUS ERROR:
-{error_feedback}
+            user_prompt += f"\nPREVIOUS ERROR: {error_feedback}\nFix the error in your previous response."
 
-Please correct your previous response based on this error."""
+        user_prompt += "\nRespond with valid JSON object only:"
 
         response = self.generate(user_prompt, system=system_prompt)
         
         try:
             return self.validate_response(response)
         except ValueError as e:
-            # Return error for self-correction loop
             raise ValueError(f"LLM response validation failed: {e}\n\nRaw response:\n{response}")
     
     def find_function_in_code(
@@ -248,162 +188,32 @@ Please correct your previous response based on this error."""
     ) -> FunctionLocationResponse:
         """
         Ask LLM to locate a function in C source code.
-        
-        Args:
-            file_content: Full C file content
-            function_name: Name of function to find
-            
-        Returns:
-            FunctionLocationResponse with location info
         """
-        # Add line numbers to file content for LLM reference
+        # Add line numbers
         lines = file_content.split('\n')
         numbered_content = '\n'.join(f"{i+1:4d}: {line}" for i, line in enumerate(lines))
         
-        system_prompt = """You are an expert C code analyzer. Your task is to locate a specific function in C source code.
+        system_prompt = FIND_FUNCTION_SYSTEM_PROMPT
 
-CRITICAL RULES:
-1. Identify the EXACT start and end line numbers (1-indexed)
-2. Start line = first line of function declaration/definition
-3. End line = line with closing brace of function body
-4. Extract the complete function signature
-5. VERIFY this is a function DEFINITION (has body with {}), not just:
-   - A function declaration/prototype (ends with ;)
-   - A function call
-   - A comment mentioning the function
-6. If function is not found or not a valid definition, set found=false
-
-Respond in JSON format:
-{
-    "found": true,
-    "start_line": 42,
-    "end_line": 58,
-    "signature": "static int my_function(int param)",
-    "reasoning": "Found function definition with body at lines 42-58"
-}
-
-If function is not found or not a definition:
-{
-    "found": false,
-    "start_line": 0,
-    "end_line": 0,
-    "signature": "",
-    "reasoning": "Function 'xyz' not found in file"
-}"""
-
-        user_prompt = f"""Find the function named '{function_name}' in this C code.
-
-The code is shown with line numbers (format: "LINE: code"):
-
-```c
-{numbered_content}
-```
-
-Locate the function '{function_name}' and return its exact line numbers and signature."""
+        user_prompt = FIND_FUNCTION_USER_TEMPLATE.format(
+            function_name=function_name,
+            numbered_content=numbered_content
+        )
 
         try:
             response = self.generate(user_prompt, system=system_prompt)
             data = self.parse_json_response(response)
             return FunctionLocationResponse(**data)
         except (ValueError, ValidationError) as e:
-            # Return not found on parsing errors
             return FunctionLocationResponse(
                 found=False,
                 reasoning=f"LLM response parsing failed: {e}"
             )
         except (ConnectionError, TimeoutError) as e:
-            # Return not found on connection errors
             return FunctionLocationResponse(
                 found=False,
                 reasoning=f"LLM connection error: {e}"
             )
     
-    def validate_code_with_llm(
-        self,
-        original_code: str,
-        modified_code: str,
-        violation_context: str
-    ) -> CodeValidationResponse:
-        """
-        Ask LLM to validate modified C code for syntax and semantic preservation.
-        
-        Args:
-            original_code: Original function code
-            modified_code: Modified function code to validate
-            violation_context: MISRA violation that was being fixed
-            
-        Returns:
-            CodeValidationResponse with validation results
-        """
-        system_prompt = """You are an expert C code validator specializing in MISRA C compliance.
-Your task is to validate modified C code to ensure:
-1. Syntax correctness
-2. Semantic preservation (same behavior as original)
-3. No unintended side effects
 
-CRITICAL RULES:
-1. Check if the modified code is syntactically valid C code
-2. Verify that the modification preserves the original logic and behavior
-3. Identify any potential issues or risks in the modification
-4. Consider the MISRA violation context when validating
-
-Respond in JSON format ONLY:
-{
-    "is_valid": true,
-    "has_syntax_errors": false,
-    "syntax_error_message": null,
-    "preserves_semantics": true,
-    "semantic_warnings": null,
-    "reasoning": "Brief explanation of validation result"
-}
-
-If there are issues:
-{
-    "is_valid": false,
-    "has_syntax_errors": true,
-    "syntax_error_message": "Description of syntax error",
-    "preserves_semantics": false,
-    "semantic_warnings": "Description of semantic issues",
-    "reasoning": "Detailed explanation of what's wrong"
-}
-
-**IMPORTANT**: Output ONLY the JSON object, nothing else."""
-
-        user_prompt = f"""Validate this code modification made to fix a MISRA C violation.
-
-MISRA Violation Context:
-{violation_context}
-
-Original Code:
-```c
-{original_code}
-```
-
-Modified Code:
-```c
-{modified_code}
-```
-
-Validate the modified code and return your assessment."""
-
-        try:
-            response = self.generate(user_prompt, system=system_prompt)
-            data = self.parse_json_response(response)
-            return CodeValidationResponse(**data)
-        except (ValueError, ValidationError) as e:
-            # Return invalid on parsing errors
-            return CodeValidationResponse(
-                is_valid=False,
-                has_syntax_errors=True,
-                syntax_error_message=f"LLM validation failed: {e}",
-                reasoning=f"Failed to parse LLM validation response: {e}"
-            )
-        except (ConnectionError, TimeoutError) as e:
-            # Return invalid on connection errors
-            return CodeValidationResponse(
-                is_valid=False,
-                has_syntax_errors=True,
-                syntax_error_message=f"LLM connection error: {e}",
-                reasoning=f"Could not connect to LLM for validation: {e}"
-            )
 
