@@ -39,10 +39,12 @@ def find_function(file_content: str, function_name: str) -> Optional[FunctionInf
     """
 
     # Initialize parser
+    # Tree-sitter parser 초기화
     c_language = Language(tree_sitter_c.language())
     parser = Parser(c_language)
     
-    # Parse the source code
+    # 소스 코드를 바이트로 변환
+    # errors="replace"로 인코딩 불가능한 문자(한글 등)를 대체 문자로 변환
     src_bytes = file_content.encode("utf-8", errors="replace")
     tree = parser.parse(src_bytes)
     
@@ -90,22 +92,23 @@ def _find_function_node(node, target_name: str, src_bytes: bytes):
     Returns:
         Function definition node if found, None otherwise
     """
-    # Stack-based DFS traversal (learned from user's code snippet)
+    # Stack 기반 DFS (깊이 우선 탐색) 순회
+    # 재귀 대신 stack을 사용하여 stack overflow 방지
     stack = [node]
     
     while stack:
         current = stack.pop()
         
-        # Check if this is a function definition with matching name
+        # 현재 노드가 function_definition인지 확인
         if current.type == 'function_definition':
             func_name = _extract_function_name(current, src_bytes)
             if func_name == target_name:
-                return current
+                return current  # 찾은 함수 반환
         
-        # Add all children to stack for further traversal
+        # 모든 자식 노드를 stack에 추가하여 계속 탐색
         stack.extend(current.children)
     
-    return None
+    return None  # 함수를 찾지 못함
 
 
 def _extract_function_name(func_def_node, src_bytes: bytes) -> str:
@@ -122,29 +125,31 @@ def _extract_function_name(func_def_node, src_bytes: bytes) -> str:
     Returns:
         Function name as string, or empty string if not found
     """
-    # Get the declarator field from function_definition
+    # function_definition에서 declarator 필드를 가져옴
+    # declarator는 함수의 이름과 매개변수 정보를 포함
     decl = func_def_node.child_by_field_name('declarator')
     if decl is None:
         return ""
     
-    # Follow the declarator chain until we find an identifier
+    # declarator 체인을 따라가며 identifier(함수 이름)를 찾음
     cur = decl
     while cur is not None and cur.type != 'identifier':
         next_decl = cur.child_by_field_name('declarator')
         if next_decl is None:
-            # Last resort: check direct children for identifier
+            # 마지막 수단: 직접 자식 노드에서 identifier 찾기
             for ch in cur.children:
                 if ch.type == 'identifier':
-                    # Use node.text property - automatically handles bytes->str conversion
+                    # node.text는 bytes이므로 utf8로 디코딩
                     return ch.text.decode('utf8')
             break
         cur = next_decl
     
-    # If we found an identifier, extract its text using node.text
+    
+    # identifier를 찾았으면 텍스트 추출
     if cur is not None and cur.type == 'identifier':
         return cur.text.decode('utf8')
     
-    return ""
+    return ""  # 함수 이름을 찾지 못함
 
 
 # ============================================================================

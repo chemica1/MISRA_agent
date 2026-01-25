@@ -107,7 +107,8 @@ class OllamaClient:
             else:
                 raise ValueError("No JSON found in response")
         
-        # Parse JSON
+        # Parse JSON with strict=False to handle Korean text and backslash escapes
+        # strict=False allows control characters and unescaped backslashes
         try:
             return json.loads(json_str, strict=False)
         except json.JSONDecodeError as e:

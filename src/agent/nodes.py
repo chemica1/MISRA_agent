@@ -18,15 +18,18 @@ from ..config import settings
 def load_violations_node(state: AgentState) -> AgentState:
     """
     Initial node: Load next violation from queue.
+    
+    큐에서 다음 violation을 로드하고 state를 초기화합니다.
     """
     print("\n" + "="*60)
     
+    # 큐가 비어있으면 모든 작업 완료
     if not state["violations_queue"]:
         print("[COMPLETE] All violations processed")
         state["status"] = "completed"
         return state
     
-    # Get next violation
+    # 큐에서 다음 violation 가져오기
     current = state["violations_queue"][0]
     state["current_violation"] = current
     state["retry_count"] = 0
@@ -44,6 +47,8 @@ def load_violations_node(state: AgentState) -> AgentState:
 def read_file_node(state: AgentState) -> AgentState:
     """
     Read the file containing the violation.
+    
+    Violation이 발생한 파일을 찾아서 읽습니다.
     """
     violation = state["current_violation"]
     if not violation:
@@ -53,7 +58,7 @@ def read_file_node(state: AgentState) -> AgentState:
     print(f"[ACTION] Reading file: {violation.file_path}")
     
     try:
-        # Find file in project
+        # 프로젝트에서 파일 찾기
         project_root = settings.get_project_root_path()
         file_path = find_file_in_project(violation.file_path, str(project_root))
         
@@ -62,7 +67,7 @@ def read_file_node(state: AgentState) -> AgentState:
             print(f"[ERROR] {state['error_message']}")
             return state
         
-        # Read file content
+        # 파일 내용 읽기
         content = read_file(file_path, str(project_root))
         state["file_content"] = content
         
