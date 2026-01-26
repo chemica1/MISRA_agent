@@ -132,8 +132,7 @@ def decide_action_node(state: AgentState) -> AgentState:
         response = llm.decide_action(
             violation=violation.violation_description,
             function_code=state["function_code"],
-            error_feedback=state["error_message"],
-            temperature=settings.ollama_temperature
+            error_feedback=state["error_message"]
         )
     except ValueError as e:
         # JSON parsing or validation error - will trigger retry
@@ -365,7 +364,9 @@ def next_violation_node(state: AgentState) -> AgentState:
     save_state(state, settings.state_file)
     
     # Save logs incrementally after each violation
-    from .state import save_logs
-    save_logs(state["logs"], settings.log_file)
+    # Save logs incrementally after each violation
+    from .state import append_logs
+    append_logs(state["logs"], settings.log_file)
+    state["logs"] = []  # Clear memory after saving
     
     return state

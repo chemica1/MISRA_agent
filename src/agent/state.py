@@ -120,7 +120,31 @@ def initialize_state(violations: List[Violation]) -> AgentState:
     )
 
 
-def save_logs(logs: List[RefactoringLog], file_path: str) -> None:
-    """Save refactoring logs to JSON file."""
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump([log.model_dump() for log in logs], f, indent=2, ensure_ascii=False)
+def append_logs(new_logs: List[RefactoringLog], file_path: str) -> None:
+    """
+    Append new logs to the existing JSON log file.
+    
+    Reads existing logs from the file (if it exists), appends the new logs,
+    and writes the combined list back to the file.
+    """
+    if not new_logs:
+        return
+        
+    existing_logs = []
+    path = Path(file_path)
+    
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    existing_logs = json.loads(content)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"[WARNING] Could not read existing logs from {file_path}: {e}")
+            # If file is corrupted, we'll overwrite (or could backup, but for now we follow simple logic)
+    
+    # Combine and save
+    all_logs = existing_logs + [log.model_dump() for log in new_logs]
+    
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(all_logs, f, indent=2, ensure_ascii=False)

@@ -1,9 +1,12 @@
-refactor: remove retry logic
+refactor: externalize temperature config and remove unused find_function code
 
-- Remove adaptive temperature calculation based on retry count
-- Remove retry-specific instructions (RETRY_INSTRUCTIONS)
-- Simplify decide_action to use fixed temperature of 0.7
-- Delete get_retry_instruction helper function from prompts.py
+- Add OLLAMA_TEMPERATURE to .env for external configuration
+- Add ollama_temperature setting to config/settings.py
+- Use settings.ollama_temperature in nodes.py instead of hardcoded value
+- Remove unused FunctionLocationResponse class from llm_client.py
+- Remove unused find_function_in_code method from llm_client.py
+- Remove unused FIND_FUNCTION prompts from prompts.py
+  (tree-sitter based find_function is used instead of LLM)
 
-The retry logic added complexity without clear benefits.
-Using fixed temperature keeps the implementation simple and predictable.
+This simplifies the codebase by removing dead code and makes
+temperature configurable via environment variables.

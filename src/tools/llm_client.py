@@ -40,14 +40,13 @@ class OllamaClient:
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
     
-    def generate(self, prompt: str, system: Optional[str] = None, temperature: float = 0.7) -> str:
+    def generate(self, prompt: str, system: Optional[str] = None) -> str:
         """
         Generate response from Ollama.
         
         Args:
             prompt: User prompt
             system: System prompt
-            temperature: Sampling temperature (0.0-1.0). Higher = more creative/random
             
         Returns:
             Generated text
@@ -62,9 +61,7 @@ class OllamaClient:
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": temperature
-            }
+            "options": {}
         }
         
         if system:
@@ -146,8 +143,7 @@ class OllamaClient:
         self,
         violation: str,
         function_code: str,
-        error_feedback: Optional[str] = None,
-        temperature: float = 0.7
+        error_feedback: Optional[str] = None
     ) -> OllamaResponse:
         """
         Ask LLM to decide on refactoring action.
@@ -156,7 +152,6 @@ class OllamaClient:
             violation: MISRA violation description
             function_code: Code of the function to fix
             error_feedback: Previous error message if retrying
-            temperature: Sampling temperature
         """
         system_prompt = DECIDE_ACTION_SYSTEM_PROMPT
 
@@ -170,7 +165,7 @@ class OllamaClient:
 
         user_prompt += "\nRespond with valid JSON object only:"
 
-        response = self.generate(user_prompt, system=system_prompt, temperature=temperature)
+        response = self.generate(user_prompt, system=system_prompt)
         
         try:
             return self.validate_response(response)

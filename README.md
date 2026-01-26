@@ -183,47 +183,6 @@ It will automatically resume from `state.json`.
 - ✅ **Automatic Backups**: `.bak` files created before any modification
 - ✅ **Sandboxed Execution**: Agent restricted to `PROJECT_ROOT` directory
 
-## Troubleshooting
-
-### Ollama Connection Error
-
-```
-Error: Could not connect to Ollama at http://localhost:11434
-```
-
-**Solution**: Ensure Ollama is running:
-```bash
-ollama serve
-```
-
-### Model Not Found
-
-```
-Error: Model 'deepseek-coder' not found
-```
-
-**Solution**: Pull the model:
-```bash
-ollama pull deepseek-coder
-```
-
-### JSON Parsing Error
-
-The agent has built-in self-correction. If you see repeated JSON errors, try:
-1. Use a more capable model (e.g., `deepseek-coder` instead of smaller models)
-2. Increase `OLLAMA_TIMEOUT` in `.env`
-
-## Docker Deployment (Optional)
-
-```bash
-# Build image
-docker build -t misra-agent .
-
-# Run container (requires Ollama on host)
-docker run --network host -v $(pwd)/target_project:/app/target_project misra-agent
-```
-
-**Note**: Ollama must be accessible from container.
 
 ## Development
 
@@ -241,26 +200,9 @@ MISRA_agent/
 └── requirements.txt
 ```
 
-### Running Tests
-
-```bash
-pytest tests/
-```
-
 ## Limitations
 
 - **LLM Dependency**: Effectiveness depends on Ollama model capabilities
 - **Syntax-Only Validation**: No actual compilation (to avoid toolchain dependencies)
 - **Heuristic Checks**: Semantic preservation uses heuristics, not formal verification
 - **Manual Review Required**: Always review changes before production deployment
-
-## License
-
-MIT
-
-## Contributing
-
-Contributions welcome! Please ensure:
-1. Security measures remain intact
-2. Tests pass
-3. Documentation updated
