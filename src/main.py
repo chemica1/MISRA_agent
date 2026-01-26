@@ -12,7 +12,8 @@ from .config import settings
 from .agent.state import (
     initialize_state,
     load_state,
-    save_logs,
+    load_state,
+    append_logs,
     save_state,
     RefactoringLog,
     AgentState
@@ -36,14 +37,24 @@ def print_banner():
 def print_summary(state: AgentState):
     """Print execution summary.
     
-    Args:
-        state: Final agent state (includes logs)
+    Reads logs from the log file to calculate statistics.
     """
-    total = len(state["logs"])
-    success = sum(1 for log in state["logs"] if log.status == "success")
-    skipped_unsafe = sum(1 for log in state["logs"] if log.status == "skipped_unsafe")
-    already_compliant = sum(1 for log in state["logs"] if log.status == "already_compliant")
-    failed = sum(1 for log in state["logs"] if log.status == "failed")
+    import json
+    
+    logs = []
+    log_file = Path(settings.log_file)
+    if log_file.exists():
+        try:
+            with open(log_file, "r", encoding="utf-8") as f:
+                logs = json.load(f)
+        except Exception as e:
+            print(f"[WARNING] Could not read logs for summary: {e}")
+            
+    total = len(logs)
+    success = sum(1 for log in logs if log.get("status") == "success")
+    skipped_unsafe = sum(1 for log in logs if log.get("status") == "skipped_unsafe")
+    already_compliant = sum(1 for log in logs if log.get("status") == "already_compliant")
+    failed = sum(1 for log in logs if log.get("status") == "failed")
     
     print("\n" + "="*60)
     print("EXECUTION SUMMARY")
@@ -208,7 +219,7 @@ def main():
         
         # Save final logs
         print(f"\n[INFO] Saving logs to: {settings.log_file}")
-        save_logs(final_state["logs"], settings.log_file)
+        append_logs(final_state["logs"], settings.log_file)
         
         # Print summary
         print_summary(final_state)
