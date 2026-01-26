@@ -116,7 +116,13 @@ class OllamaClient:
         # - Missing quotes on keys
         try:
             repaired_json = repair_json(json_str)
-            return json.loads(repaired_json, strict=False)
+            parsed = json.loads(repaired_json, strict=False)
+            
+            # Ensure the result is a dictionary, not a list
+            if not isinstance(parsed, dict):
+                raise ValueError(f"Expected JSON object (dict), but got {type(parsed).__name__}. Parsed value: {str(parsed)[:200]}")
+            
+            return parsed
         except Exception as e:
             raise ValueError(f"Failed to parse JSON even after repair: {e}. JSON excerpt: {json_str[:200]}...")
     
