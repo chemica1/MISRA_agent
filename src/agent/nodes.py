@@ -120,12 +120,6 @@ def decide_action_node(state: AgentState) -> AgentState:
     
     print(f"[THINKING] Analyzing MISRA violation...")
     
-    # Calculate adaptive temperature (0.7 → 0.8 → 0.85 max)
-    # Keep temperature conservative for smaller local LLM to maintain JSON stability
-    temperature = min(0.7 + (state["retry_count"] * 0.10), 0.85)
-    if state["retry_count"] > 0:
-        print(f"[RETRY #{state['retry_count']}] Using temperature={temperature:.2f} for increased exploration")
-    
     # Initialize Ollama client
     llm = OllamaClient(
         model=settings.ollama_model,
@@ -133,18 +127,13 @@ def decide_action_node(state: AgentState) -> AgentState:
         timeout=settings.ollama_timeout
     )
     
-    # Get retry-specific instruction
-    from ..tools.prompts import get_retry_instruction
-    retry_instruction = get_retry_instruction(state["retry_count"])
-    
     # Get LLM decision - only wrap the actual LLM call in try-except
     try:
         response = llm.decide_action(
             violation=violation.violation_description,
             function_code=state["function_code"],
             error_feedback=state["error_message"],
-            temperature=temperature,
-            retry_instruction=retry_instruction
+            temperature=0.7
         )
     except ValueError as e:
         # JSON parsing or validation error - will trigger retry

@@ -161,8 +161,7 @@ class OllamaClient:
         violation: str,
         function_code: str,
         error_feedback: Optional[str] = None,
-        temperature: float = 0.7,
-        retry_instruction: Optional[str] = None
+        temperature: float = 0.7
     ) -> OllamaResponse:
         """
         Ask LLM to decide on refactoring action.
@@ -171,8 +170,7 @@ class OllamaClient:
             violation: MISRA violation description
             function_code: Code of the function to fix
             error_feedback: Previous error message if retrying
-            temperature: Sampling temperature (higher for retries)
-            retry_instruction: Additional instructions for retry attempts
+            temperature: Sampling temperature
         """
         system_prompt = DECIDE_ACTION_SYSTEM_PROMPT
 
@@ -180,9 +178,6 @@ class OllamaClient:
             violation=violation,
             function_code=function_code
         )
-
-        if retry_instruction:
-            user_prompt = retry_instruction + "\n\n" + user_prompt
 
         if error_feedback:
             user_prompt += f"\nPREVIOUS ERROR: {error_feedback}\nFix the error in your previous response."

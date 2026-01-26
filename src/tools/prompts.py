@@ -54,29 +54,3 @@ SOURCE CODE:
 
 Respond with valid JSON object only:"""
 
-# Retry-specific instruction templates
-# Optimized for smaller local LLMs (e.g., Qwen Coder 32B)
-# Use concrete, specific instructions instead of abstract concepts
-RETRY_INSTRUCTIONS = {
-    1: """⚠️ RETRY ATTEMPT #1
-Previous solution failed. Try these specific changes:
-- Change variable names (e.g., 'i' → 'index')
-- Split complex expressions into multiple lines
-- Use explicit type casts if needed
-- Check for off-by-one errors in loops""",
-    
-    2: """⚠️⚠️ RETRY ATTEMPT #2
-Still failing. Apply these fixes:
-- Break down the function into smaller steps
-- Add intermediate variables with clear names
-- Ensure all return paths are covered
-- Double-check MISRA rule specifics"""
-}
-
-
-def get_retry_instruction(retry_count: int) -> str:
-    """Get progressive instruction based on retry count."""
-    if retry_count == 0:
-        return ""
-    return RETRY_INSTRUCTIONS.get(retry_count, RETRY_INSTRUCTIONS[2])
-
