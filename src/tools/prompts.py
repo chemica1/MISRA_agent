@@ -26,31 +26,3 @@ CODE:
 {function_code}
 ```
 """
-
-# Find Function Prompts
-FIND_FUNCTION_SYSTEM_PROMPT = """Locate the definition of the specified function in the C code.
-STRICT JSON OUTPUT ONLY.
-
-RULES:
-1. Find EXACT start_line (first line of signature) and end_line (closing brace).
-2. Must be a FUNCTION DEFINITION (with body), not a declaration/prototype.
-3. If not found or only a prototype exists, set found=false.
-
-RESPONSE SCHEMA:
-{
-    "found": boolean,
-    "start_line": integer,
-    "end_line": integer,
-    "signature": "string",
-    "reasoning": "string"
-}"""
-
-FIND_FUNCTION_USER_TEMPLATE = """FIND FUNCTION: {function_name}
-
-SOURCE CODE:
-```c
-{numbered_content}
-```
-
-Respond with valid JSON object only:"""
-

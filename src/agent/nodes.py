@@ -133,7 +133,7 @@ def decide_action_node(state: AgentState) -> AgentState:
             violation=violation.violation_description,
             function_code=state["function_code"],
             error_feedback=state["error_message"],
-            temperature=0.7
+            temperature=settings.ollama_temperature
         )
     except ValueError as e:
         # JSON parsing or validation error - will trigger retry

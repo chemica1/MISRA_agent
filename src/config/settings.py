@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen3-coder:30b"
     ollama_base_url: str = "http://localhost:11434"
     ollama_timeout: int = 120
+    ollama_temperature: float = 0.7
     
     # Agent Configuration
     max_retries: int = 3

@@ -1,0 +1,9 @@
+refactor: remove retry logic
+
+- Remove adaptive temperature calculation based on retry count
+- Remove retry-specific instructions (RETRY_INSTRUCTIONS)
+- Simplify decide_action to use fixed temperature of 0.7
+- Delete get_retry_instruction helper function from prompts.py
+
+The retry logic added complexity without clear benefits.
+Using fixed temperature keeps the implementation simple and predictable.

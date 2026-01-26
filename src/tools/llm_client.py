@@ -10,9 +10,7 @@ from json_repair import repair_json
 
 from .prompts import (
     DECIDE_ACTION_SYSTEM_PROMPT,
-    DECIDE_ACTION_USER_TEMPLATE,
-    FIND_FUNCTION_SYSTEM_PROMPT,
-    FIND_FUNCTION_USER_TEMPLATE
+    DECIDE_ACTION_USER_TEMPLATE
 )
 
 
@@ -24,18 +22,6 @@ class OllamaResponse(BaseModel):
     safety_concerns: Optional[str] = None  # Description of risks if unsafe (<200 chars)
     modified_code: Optional[str] = None
     reason: Optional[str] = None  # Short reason for modification (<200 chars)
-
-
-class FunctionLocationResponse(BaseModel):
-    """Response for function location in C code."""
-    found: bool
-    start_line: int = 0  # 1-indexed, 0 if not found
-    end_line: int = 0    # 1-indexed, 0 if not found
-    signature: str = ""
-    reasoning: str = ""
-
-
-
 
 
 class OllamaClient:
@@ -190,40 +176,3 @@ class OllamaClient:
             return self.validate_response(response)
         except ValueError as e:
             raise ValueError(f"LLM response validation failed: {e}\n\nRaw response:\n{response}")
-    
-    def find_function_in_code(
-        self,
-        file_content: str,
-        function_name: str
-    ) -> FunctionLocationResponse:
-        """
-        Ask LLM to locate a function in C source code.
-        """
-        # Add line numbers
-        lines = file_content.split('\n')
-        numbered_content = '\n'.join(f"{i+1:4d}: {line}" for i, line in enumerate(lines))
-        
-        system_prompt = FIND_FUNCTION_SYSTEM_PROMPT
-
-        user_prompt = FIND_FUNCTION_USER_TEMPLATE.format(
-            function_name=function_name,
-            numbered_content=numbered_content
-        )
-
-        try:
-            response = self.generate(user_prompt, system=system_prompt)
-            data = self.parse_json_response(response)
-            return FunctionLocationResponse(**data)
-        except (ValueError, ValidationError) as e:
-            return FunctionLocationResponse(
-                found=False,
-                reasoning=f"LLM response parsing failed: {e}"
-            )
-        except (ConnectionError, TimeoutError) as e:
-            return FunctionLocationResponse(
-                found=False,
-                reasoning=f"LLM connection error: {e}"
-            )
-    
-
-
