@@ -5,6 +5,7 @@ import json
 import re
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, ValidationError
+from json_repair import repair_json
 
 
 from .prompts import (
@@ -53,13 +54,14 @@ class OllamaClient:
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
     
-    def generate(self, prompt: str, system: Optional[str] = None) -> str:
+    def generate(self, prompt: str, system: Optional[str] = None, temperature: float = 0.7) -> str:
         """
         Generate response from Ollama.
         
         Args:
             prompt: User prompt
             system: System prompt
+            temperature: Sampling temperature (0.0-1.0). Higher = more creative/random
             
         Returns:
             Generated text
@@ -73,7 +75,10 @@ class OllamaClient:
         payload = {
             "model": self.model,
             "prompt": prompt,
-            "stream": False
+            "stream": False,
+            "options": {
+                "temperature": temperature
+            }
         }
         
         if system:
@@ -95,7 +100,10 @@ class OllamaClient:
     
     def parse_json_response(self, response: str) -> Dict[str, Any]:
         """
-        Parse JSON from LLM response with error recovery.
+        Parse JSON from LLM response using json-repair for robust handling.
+        
+        Handles C code in fields like 'modified_code' which may contain
+        unescaped quotes from string literals (e.g., printf("hello")).
         
         Args:
             response: Raw LLM response
@@ -118,21 +126,16 @@ class OllamaClient:
             else:
                 raise ValueError(f"No JSON found in response. Response starts with: {response[:200]}...")
         
-        # Clean up common LLM mistakes
-        json_str = json_str.strip()
-        # Remove trailing commas before closing braces/brackets
-        json_str = re.sub(r',\s*}', '}', json_str)
-        json_str = re.sub(r',\s*]', ']', json_str)
-        # Remove comments (// and /* */)
-        json_str = re.sub(r'//.*?$', '', json_str, flags=re.MULTILINE)
-        json_str = re.sub(r'/\*.*?\*/', '', json_str, flags=re.DOTALL)
-        
-        # Parse JSON with strict=False to handle Korean text and backslash escapes
-        # strict=False allows control characters and unescaped backslashes
+        # Use json-repair to fix common LLM errors:
+        # - Unescaped quotes in string values (e.g., C code with printf("..."))
+        # - Trailing commas
+        # - Comments
+        # - Missing quotes on keys
         try:
-            return json.loads(json_str, strict=False)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON: {e}. JSON excerpt: {json_str[:200]}...")
+            repaired_json = repair_json(json_str)
+            return json.loads(repaired_json, strict=False)
+        except Exception as e:
+            raise ValueError(f"Failed to parse JSON even after repair: {e}. JSON excerpt: {json_str[:200]}...")
     
     def validate_response(self, response: str) -> OllamaResponse:
         """
@@ -157,10 +160,19 @@ class OllamaClient:
         self,
         violation: str,
         function_code: str,
-        error_feedback: Optional[str] = None
+        error_feedback: Optional[str] = None,
+        temperature: float = 0.7,
+        retry_instruction: Optional[str] = None
     ) -> OllamaResponse:
         """
         Ask LLM to decide on refactoring action.
+        
+        Args:
+            violation: MISRA violation description
+            function_code: Code of the function to fix
+            error_feedback: Previous error message if retrying
+            temperature: Sampling temperature (higher for retries)
+            retry_instruction: Additional instructions for retry attempts
         """
         system_prompt = DECIDE_ACTION_SYSTEM_PROMPT
 
@@ -169,12 +181,15 @@ class OllamaClient:
             function_code=function_code
         )
 
+        if retry_instruction:
+            user_prompt = retry_instruction + "\n\n" + user_prompt
+
         if error_feedback:
             user_prompt += f"\nPREVIOUS ERROR: {error_feedback}\nFix the error in your previous response."
 
         user_prompt += "\nRespond with valid JSON object only:"
 
-        response = self.generate(user_prompt, system=system_prompt)
+        response = self.generate(user_prompt, system=system_prompt, temperature=temperature)
         
         try:
             return self.validate_response(response)
