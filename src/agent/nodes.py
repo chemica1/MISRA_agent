@@ -120,56 +120,58 @@ def decide_action_node(state: AgentState) -> AgentState:
     
     print(f"[THINKING] Analyzing MISRA violation...")
     
+    # Initialize Ollama client
+    llm = OllamaClient(
+        model=settings.ollama_model,
+        base_url=settings.ollama_base_url,
+        timeout=settings.ollama_timeout
+    )
+    
+    # Get LLM decision - only wrap the actual LLM call in try-except
     try:
-        # Initialize Ollama client
-        llm = OllamaClient(
-            model=settings.ollama_model,
-            base_url=settings.ollama_base_url,
-            timeout=settings.ollama_timeout
-        )
-        
-        # Get LLM decision
         response = llm.decide_action(
             violation=violation.violation_description,
             function_code=state["function_code"],
             error_feedback=state["error_message"]
         )
-        
-        print(f"[THINKING] {response.reasoning}")
-        
-        # Check safety assessment
-        if not response.is_safe:
-            safety_msg = f"Unsafe modification detected: {response.safety_concerns or 'requires global changes'}"
-            state["error_message"] = safety_msg
-            print(f"[SAFETY RISK] {safety_msg}")
-            print(f"[SKIP] Will not apply risky changes")
-            return state
-        
-        # Check if code is already compliant
-        if response.action == "already_compliant":
-            state["error_message"] = f"Already compliant: {response.reasoning}"
-            print(f"[ALREADY COMPLIANT] {response.reasoning}")
-            return state
-        
-        if response.action == "skip":
-            state["error_message"] = f"LLM decided to skip: {response.reasoning}"
-            print(f"[SKIP] {state['error_message']}")
-            return state
-        
-        if response.action == "modify_code" and response.modified_code:
-            state["modified_code"] = response.modified_code
-            state["error_message"] = None  # Clear previous errors
-            print(f"[ACTION] Generated fix: {response.reason or 'MISRA compliance'}")
-        else:
-            state["error_message"] = "LLM did not provide modified code"
-            print(f"[ERROR] {state['error_message']}")
-        
     except ValueError as e:
         # JSON parsing or validation error - will trigger retry
         state["error_message"] = str(e)
         print(f"[ERROR] {state['error_message']}")
+        return state
     except (ConnectionError, TimeoutError) as e:
         state["error_message"] = f"Ollama error: {e}"
+        print(f"[ERROR] {state['error_message']}")
+        return state
+    
+    # Process the response (outside of exception handling)
+    print(f"[THINKING] {response.reasoning}")
+    
+    # Check safety assessment
+    if not response.is_safe:
+        safety_msg = f"Unsafe modification detected: {response.safety_concerns or 'requires global changes'}"
+        state["error_message"] = safety_msg
+        print(f"[SAFETY RISK] {safety_msg}")
+        print(f"[SKIP] Will not apply risky changes")
+        return state
+    
+    # Check if code is already compliant
+    if response.action == "already_compliant":
+        state["error_message"] = f"Already compliant: {response.reasoning}"
+        print(f"[ALREADY COMPLIANT] {response.reasoning}")
+        return state
+    
+    if response.action == "skip":
+        state["error_message"] = f"LLM decided to skip: {response.reasoning}"
+        print(f"[SKIP] {state['error_message']}")
+        return state
+    
+    if response.action == "modify_code" and response.modified_code:
+        state["modified_code"] = response.modified_code
+        state["error_message"] = None  # Clear previous errors
+        print(f"[ACTION] Generated fix: {response.reason or 'MISRA compliance'}")
+    else:
+        state["error_message"] = "LLM did not provide modified code"
         print(f"[ERROR] {state['error_message']}")
     
     return state
