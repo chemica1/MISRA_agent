@@ -12,11 +12,11 @@ RULES:
 4. Use minimal changes
 
 SAFETY CHECK:
-- If fix needs function signature change → is_safe=false, action="skip"
-- If fix needs global variable changes → is_safe=false, action="skip"
-- If fix needs multi-file changes → is_safe=false, action="skip"
-- If code already complies → action="already_compliant"
-- Otherwise → is_safe=true, action="modify_code"
+- If fix needs function signature change -> is_safe=false, action="skip"
+- If fix needs global variable changes -> is_safe=false, action="skip"
+- If fix needs multi-file changes -> is_safe=false, action="skip"
+- If code already complies -> action="already_compliant"
+- Otherwise -> is_safe=true, action="modify_code"
 
 OUTPUT FORMAT: Return ONLY valid JSON, no markdown, no extra text.
 
