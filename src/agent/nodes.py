@@ -77,6 +77,10 @@ def read_file_node(state: AgentState) -> AgentState:
     except (SecurityError, FileNotFoundError) as e:
         state["error_message"] = str(e)
         print(f"[ERROR] {state['error_message']}")
+    except Exception as e:
+        # Catch unexpected errors (encoding issues, permissions, etc.)
+        state["error_message"] = f"Unexpected error reading file: {e}"
+        print(f"[ERROR] {state['error_message']}")
     
     return state
 
@@ -151,6 +155,8 @@ def decide_action_node(state: AgentState) -> AgentState:
     # Check safety assessment
     if not response.is_safe:
         safety_msg = f"Unsafe modification detected: {response.safety_concerns or 'requires global changes'}"
+        # Force immediate skip - safety failures are not retriable
+        state["retry_count"] = settings.max_retries
         state["error_message"] = safety_msg
         print(f"[SAFETY RISK] {safety_msg}")
         print(f"[SKIP] Will not apply risky changes")
@@ -158,11 +164,15 @@ def decide_action_node(state: AgentState) -> AgentState:
     
     # Check if code is already compliant
     if response.action == "already_compliant":
+        # Force immediate skip - already compliant is not retriable
+        state["retry_count"] = settings.max_retries
         state["error_message"] = f"Already compliant: {response.reasoning}"
         print(f"[ALREADY COMPLIANT] {response.reasoning}")
         return state
     
     if response.action == "skip":
+        # Force immediate skip - LLM decision is not retriable
+        state["retry_count"] = settings.max_retries
         state["error_message"] = f"LLM decided to skip: {response.reasoning}"
         print(f"[SKIP] {state['error_message']}")
         return state
@@ -292,6 +302,11 @@ def apply_modification_node(state: AgentState) -> AgentState:
                 retry_count=state["retry_count"]
             )
             state["logs"].append(log)
+        else:
+            # Critical: file path not found
+            state["error_message"] = f"Could not locate file for writing: {violation.file_path}"
+            print(f"[ERROR] {state['error_message']}")
+            return state
         
     except Exception as e:
         state["error_message"] = f"Failed to apply modification: {e}"
@@ -370,6 +385,10 @@ def next_violation_node(state: AgentState) -> AgentState:
     state["current_violation"] = None
     state["retry_count"] = 0
     state["error_message"] = None
+    # Free memory from large state fields
+    state["file_content"] = None
+    state["function_code"] = None
+    state["modified_code"] = None
     
     # Save state for persistence
     save_state(state, settings.state_file)
