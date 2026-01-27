@@ -12,7 +12,6 @@ from .config import settings
 from .agent.state import (
     initialize_state,
     load_state,
-    load_state,
     append_logs,
     save_state,
     RefactoringLog,
