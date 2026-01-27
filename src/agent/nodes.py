@@ -30,7 +30,7 @@ def load_violations_node(state: AgentState) -> AgentState:
         state["current_violation"] = None  # Explicitly reset
         return state
     
-    # Get next violation from queue
+    # Get next violation from queue (DO NOT REMOVE - that's done in next_violation_node)
     current = state["violations_queue"][0]
     state["current_violation"] = current
     state["retry_count"] = 0
@@ -39,7 +39,9 @@ def load_violations_node(state: AgentState) -> AgentState:
     state["function_code"] = None
     state["modified_code"] = None
     
-    print(f"[PROCESSING] ({len(state['violations_queue'])} remaining) {current.file_path} :: {current.function_name}")
+    # Log queue size for debugging - helps detect queue corruption
+    queue_size = len(state['violations_queue'])
+    print(f"[PROCESSING] ({queue_size} remaining) {current.file_path} :: {current.function_name}")
     print(f"[VIOLATION] {current.violation_description}")
     
     return state
@@ -374,11 +376,20 @@ def next_violation_node(state: AgentState) -> AgentState:
     """
     Move to next violation in queue.
     """
+    # Store current queue size for validation
+    queue_size_before = len(state["violations_queue"])
+    
     # Remove current violation from queue
     if state["violations_queue"]:
         removed = state["violations_queue"][0]
         state["violations_queue"] = state["violations_queue"][1:]
-        print(f"[NEXT] Completed: {removed.function_name}, {len(state['violations_queue'])} violations remaining")
+        queue_size_after = len(state["violations_queue"])
+        
+        print(f"[NEXT] Completed: {removed.function_name}, {queue_size_after} violations remaining")
+        
+        # Defensive check: Queue should decrease by 1
+        if queue_size_after != queue_size_before - 1:
+            print(f"[WARNING] Queue size anomaly detected! Before: {queue_size_before}, After: {queue_size_after}")
     else:
         print("[NEXT] Queue already empty")
     

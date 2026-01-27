@@ -21,7 +21,12 @@ from .agent.graph import build_agent_graph
 from .tools import parse_violations_csv
 
 # Constants
-RECURSION_LIMIT = 50  # Maximum recursion depth for retry loops
+# Recursion limit for LangGraph execution
+# Each violation takes ~10 graph steps (load, read, extract, decide, validate, apply, next)
+# With 3 retries max, worst case is ~30 steps per violation
+# Allow for 10000 to handle ~300 violations safely in one run
+# For larger queues (e.g., 1672), consider running in batches or increasing this
+RECURSION_LIMIT = 10000
 
 
 def print_banner():
@@ -191,30 +196,21 @@ def main():
         
         print("[INFO] Starting agent execution...\n")
         
-        # Process violations with error recovery
-        # Continue even if GraphRecursionError occurs for a specific violation
-        current_state = state
-        while current_state["violations_queue"]:
-            try:
-                # Run graph with recursion limit for current violation
-                current_state = graph.invoke(current_state, {"recursion_limit": RECURSION_LIMIT})
-                
-                # Check if all violations are processed
-                if current_state["status"] == "completed":
-                    break
-                    
-            except GraphRecursionError as e:
-                # Skip current violation and continue with next
-                print(f"\n[ERROR] GraphRecursionError: {e}")
-                current_state = _handle_recursion_error(current_state)
-                
-                # If queue is empty after handling error, we're done
-                if not current_state["violations_queue"]:
-                    break
-                
-                print(f"[INFO] Continuing with {len(current_state['violations_queue'])} remaining violations...\n")
-        
-        final_state = current_state
+        # Graph handles ALL violations internally via its loop
+        # Just invoke once - simple and clean!
+        try:
+            final_state = graph.invoke(state, {"recursion_limit": RECURSION_LIMIT})
+            print("\n[SUCCESS] All violations processed!")
+            
+        except GraphRecursionError as e:
+            # Recursion limit exceeded - very rare with proper retry logic
+            print(f"\n[ERROR] GraphRecursionError: {e}")
+            print("[WARNING] This indicates a potential infinite loop in the graph")
+            print("[ACTION] Attempting to save partial progress...")
+            
+            # Attempt to save what we have
+            final_state = state
+            final_state["status"] = "failed"
         
         # Save final logs
         print(f"\n[INFO] Saving logs to: {settings.log_file}")

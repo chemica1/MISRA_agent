@@ -74,28 +74,31 @@ def build_agent_graph() -> StateGraph:
     """
     Build the LangGraph workflow.
     
+    Graph processes ALL violations internally via next_violation -> load_violations loop.
+    Simple and clean: just invoke once, graph handles everything.
+    
     Graph structure:
     
     START
       ↓
-    load_violations
-      ↓
-    read_file
-      ↓
-    extract_function
-      ↓
-    decide_action ←──────┐ (retry loop)
-      ↓                  │
-    validate_modification│
-      ↓                  │
-    [routing]            │
-      ├─ error? ─────────┘ (if retry_count < max)
-      ├─ max retries? → log_failure → next_violation
-      └─ success? → apply_modification → next_violation
-                                           ↓
-                                      load_violations (loop)
-                                           ↓
-                                          END
+    load_violations ←─────────────────┐
+      ↓                               │
+    read_file                         │
+      ↓                               │
+    extract_function                  │
+      ↓                               │
+    decide_action ←──────┐ (retry)    │
+      ↓                  │            │
+    validate_modification│            │
+      ↓                  │            │
+    [routing]            │            │
+      ├─ retry ──────────┘            │
+      ├─ skip → log_failure ──────────┤
+      └─ apply → apply_modification ──┤
+                      ↓                │
+                next_violation ────────┘ (internal loop)
+                      ↓
+                    END (when queue empty)
     """
     
     # Create graph
@@ -137,19 +140,18 @@ def build_agent_graph() -> StateGraph:
     # Retry loop
     workflow.add_edge("increment_retry", "decide_action")
     
-    # After failure logging
+    # After failure or success, move to next_violation
     workflow.add_edge("log_failure", "next_violation")
-    
-    # After successful application
     workflow.add_edge("apply_modification", "next_violation")
     
-    # Loop back or end
+    # Internal loop: next_violation -> load_violations or END
+    # This is safe because should_continue checks queue and status
     workflow.add_conditional_edges(
         "next_violation",
         should_continue,
         {
-            "next": "load_violations",
-            "end": END
+            "next": "load_violations",  # Loop back for next violation
+            "end": END                  # Queue empty, done
         }
     )
     
