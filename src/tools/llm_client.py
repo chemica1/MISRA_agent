@@ -27,7 +27,7 @@ class OllamaResponse(BaseModel):
 class OllamaClient:
     """Client for interacting with Ollama API."""
     
-    def __init__(self, model: str, base_url: str, timeout: int):
+    def __init__(self, model: str, base_url: str, timeout: int, temperature: float = 0.0):
         """
         Initialize Ollama client.
         
@@ -35,10 +35,12 @@ class OllamaClient:
             model: Model name (e.g., "deepseek-coder")
             base_url: Ollama API base URL
             timeout: Request timeout in seconds
+            temperature: Sampling temperature (0.0 to 1.0)
         """
         self.model = model
         self.base_url = base_url.rstrip('/')
         self.timeout = timeout
+        self.temperature = temperature
     
     def generate(self, prompt: str, system: Optional[str] = None) -> str:
         """
@@ -61,7 +63,9 @@ class OllamaClient:
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {}
+            "options": {
+                "temperature": self.temperature
+            }
         }
         
         if system:

@@ -129,7 +129,8 @@ def decide_action_node(state: AgentState) -> AgentState:
     llm = OllamaClient(
         model=settings.ollama_model,
         base_url=settings.ollama_base_url,
-        timeout=settings.ollama_timeout
+        timeout=settings.ollama_timeout,
+        temperature=settings.ollama_temperature
     )
     
     # Get LLM decision - only wrap the actual LLM call in try-except
