@@ -27,6 +27,7 @@ def load_violations_node(state: AgentState) -> AgentState:
     if not state["violations_queue"]:
         print("[COMPLETE] All violations processed")
         state["status"] = "completed"
+        state["current_violation"] = None  # Explicitly reset
         return state
     
     # Get next violation from queue
@@ -38,7 +39,7 @@ def load_violations_node(state: AgentState) -> AgentState:
     state["function_code"] = None
     state["modified_code"] = None
     
-    print(f"[PROCESSING] {current.file_path} :: {current.function_name}")
+    print(f"[PROCESSING] ({len(state['violations_queue'])} remaining) {current.file_path} :: {current.function_name}")
     print(f"[VIOLATION] {current.violation_description}")
     
     return state
@@ -357,13 +358,22 @@ def next_violation_node(state: AgentState) -> AgentState:
     """
     Move to next violation in queue.
     """
+    # Remove current violation from queue
     if state["violations_queue"]:
+        removed = state["violations_queue"][0]
         state["violations_queue"] = state["violations_queue"][1:]
+        print(f"[NEXT] Completed: {removed.function_name}, {len(state['violations_queue'])} violations remaining")
+    else:
+        print("[NEXT] Queue already empty")
+    
+    # Clear current violation state to prevent reprocessing
+    state["current_violation"] = None
+    state["retry_count"] = 0
+    state["error_message"] = None
     
     # Save state for persistence
     save_state(state, settings.state_file)
     
-    # Save logs incrementally after each violation
     # Save logs incrementally after each violation
     from .state import append_logs
     append_logs(state["logs"], settings.log_file)

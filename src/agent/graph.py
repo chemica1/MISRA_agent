@@ -30,10 +30,12 @@ def should_retry(state: AgentState) -> str:
     
     # Check if we have an error
     if state["error_message"]:
-        if state["retry_count"] < settings.max_retries:
-            return "retry"
-        else:
+        # Max retries reached - log and skip
+        if state["retry_count"] >= settings.max_retries:
+            print(f"[MAX_RETRIES] Reached max retries ({settings.max_retries}), skipping violation")
             return "skip"
+        # Still have retries left
+        return "retry"
     
     # Check if modification is ready
     if state["modified_code"]:
